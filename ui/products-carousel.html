@@ -61,16 +61,17 @@
   .carousel-card-price {
     font-size: 0.9rem;
     font-weight: 600;
-    color: #0a7c42;
+    color: inherit;
     margin: 0 0 0.5rem 0;
+    text-align: right;
   }
   .carousel-card-cta {
     display: inline-block;
     padding: 0.5rem 1rem;
     font-size: 0.9rem;
     font-weight: 600;
-    color: #fff;
-    background: #0a7c42;
+    color: #1F2633;
+    background: #00C2C2;
     border: none;
     border-radius: 8px;
     cursor: pointer;
@@ -78,7 +79,12 @@
     transition: background 0.15s ease;
   }
   .carousel-card-cta:hover {
-    background: #086b38;
+    background: #00a8a8;
+  }
+  .carousel-card-cta:disabled {
+    background: #e0e0e0;
+    color: #666;
+    cursor: not-allowed;
   }
 </style>
 <div id="root">
@@ -98,7 +104,8 @@
     const zeroDecimal = ["jpy", "krw", "vnd"].includes(code.toLowerCase());
     const value = zeroDecimal ? amount : amount / 100;
     try {
-      return new Intl.NumberFormat(undefined, {
+      const locale = code === "USD" ? "en-US" : undefined;
+      return new Intl.NumberFormat(locale, {
         style: "currency",
         currency: code,
       }).format(value);
