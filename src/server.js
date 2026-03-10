@@ -230,6 +230,41 @@ function createMcpServer() {
     }
   );
 
+  /**
+   * Fetch full product details by priceId from Stripe. Use this so the detail
+   * view always gets server-authoritative data and can be extended with more
+   * fields (e.g. specs, reviews) without changing carousel or model payloads.
+   */
+  async function getProductDetailByPriceId(priceId) {
+    if (!priceId || String(priceId).trim() === "") return null;
+    try {
+      const price = await stripe.prices.retrieve(priceId, {
+        expand: ["product"],
+      });
+      const product =
+        price.product && typeof price.product === "object"
+          ? price.product
+          : null;
+      if (!product) return null;
+      return {
+        priceId: price.id,
+        title: product.name,
+        description: product.description ?? "",
+        image:
+          Array.isArray(product.images) && product.images.length > 0
+            ? product.images[0]
+            : null,
+        amount: price.unit_amount ?? null,
+        currency: price.currency ?? null,
+        // Extensible: add more fields here later (e.g. metadata, images[], reviews)
+        metadata: product.metadata ?? null,
+        images: product.images ?? [],
+      };
+    } catch {
+      return null;
+    }
+  }
+
   server.registerTool(
     "view-product-detail",
     {
@@ -251,15 +286,24 @@ function createMcpServer() {
         "openai/toolInvocation/invoked": "Product details",
       },
     },
-    async (product) => ({
-      structuredContent: product,
-      content: [
-        {
-          type: "text",
-          text: `Showing details for ${product.title}.`,
-        },
-      ],
-    })
+    async (product) => {
+      // Prefer server-fetched details when we have a priceId so the UI can
+      // reuse one source of truth and we can add more details later.
+      const full =
+        product.priceId != null
+          ? await getProductDetailByPriceId(product.priceId)
+          : null;
+      const payload = full ?? product;
+      return {
+        structuredContent: payload,
+        content: [
+          {
+            type: "text",
+            text: `Showing details for ${payload.title}.`,
+          },
+        ],
+      };
+    }
   );
 
   server.registerResource(
