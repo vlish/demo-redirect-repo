@@ -1,19 +1,109 @@
 <style>
+  .carousel-wrapper {
+    position: relative;
+    font-family: system-ui, -apple-system, sans-serif;
+  }
+
+  /* Edge fade gradients */
+  .carousel-wrapper::before,
+  .carousel-wrapper::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 32px;
+    z-index: 2;
+    pointer-events: none;
+    transition: opacity 0.25s ease;
+  }
+  .carousel-wrapper::before {
+    left: 0;
+    background: linear-gradient(to right, #fff 0%, transparent 100%);
+    opacity: 0;
+  }
+  .carousel-wrapper::after {
+    right: 0;
+    background: linear-gradient(to left, #fff 0%, transparent 100%);
+    opacity: 0;
+  }
+  .carousel-wrapper.can-scroll-left::before { opacity: 1; }
+  .carousel-wrapper.can-scroll-right::after { opacity: 1; }
+
   .carousel {
     display: flex;
     gap: 1rem;
     overflow-x: auto;
-    padding: 0.5rem 0;
+    padding: 0.5rem 4px;
     scroll-snap-type: x mandatory;
     -webkit-overflow-scrolling: touch;
+    scroll-behavior: smooth;
+    scrollbar-width: none;          /* Firefox */
+    -ms-overflow-style: none;       /* IE / Edge */
   }
-  .carousel::-webkit-scrollbar {
-    height: 6px;
+  .carousel::-webkit-scrollbar { display: none; }
+
+  /* Arrow buttons */
+  .carousel-arrow {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-60%);
+    z-index: 3;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    border: 1px solid #e0e0e0;
+    background: rgba(255, 255, 255, 0.95);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: opacity 0.2s ease, box-shadow 0.2s ease;
+    padding: 0;
+    color: #333;
   }
-  .carousel::-webkit-scrollbar-thumb {
-    background: #ccc;
-    border-radius: 3px;
+  .carousel-arrow:hover {
+    box-shadow: 0 3px 12px rgba(0, 0, 0, 0.18);
   }
+  .carousel-arrow:disabled {
+    opacity: 0;
+    pointer-events: none;
+  }
+  .carousel-arrow--left  { left: -4px; }
+  .carousel-arrow--right { right: -4px; }
+  .carousel-arrow svg {
+    width: 18px;
+    height: 18px;
+    stroke: currentColor;
+    stroke-width: 2.5;
+    fill: none;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  /* Dot indicators */
+  .carousel-dots {
+    display: flex;
+    justify-content: center;
+    gap: 6px;
+    padding: 10px 0 2px;
+  }
+  .carousel-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: #d0d0d0;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    transition: background 0.2s ease, transform 0.2s ease;
+  }
+  .carousel-dot.active {
+    background: #00C2C2;
+    transform: scale(1.3);
+  }
+
+  /* Cards */
   .carousel-card {
     flex: 0 0 auto;
     width: 200px;
@@ -25,6 +115,11 @@
     flex-direction: column;
     font-family: system-ui, -apple-system, sans-serif;
     cursor: pointer;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+  }
+  .carousel-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.1);
   }
   .carousel-card-image {
     width: 100%;
@@ -162,6 +257,27 @@
     }
   };
 
+  const ARROW_LEFT_SVG = '<svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>';
+  const ARROW_RIGHT_SVG = '<svg viewBox="0 0 24 24"><polyline points="9 6 15 12 9 18"/></svg>';
+
+  function updateScrollState(wrapper, track, leftBtn, rightBtn, dots) {
+    const scrollLeft = track.scrollLeft;
+    const maxScroll = track.scrollWidth - track.clientWidth;
+    const atStart = scrollLeft <= 2;
+    const atEnd = scrollLeft >= maxScroll - 2;
+
+    leftBtn.disabled = atStart;
+    rightBtn.disabled = atEnd;
+    wrapper.classList.toggle("can-scroll-left", !atStart);
+    wrapper.classList.toggle("can-scroll-right", !atEnd);
+
+    if (dots.length > 0) {
+      const cardWidth = 200 + 16; // card width + gap
+      const activeIndex = Math.round(scrollLeft / cardWidth);
+      dots.forEach((dot, i) => dot.classList.toggle("active", i === activeIndex));
+    }
+  }
+
   const renderCarousel = (products) => {
     const root = document.getElementById("root");
     const list = Array.isArray(products) ? products : [];
@@ -170,11 +286,57 @@
       root.innerHTML = "<p style='color:#666; font-family: system-ui, sans-serif;'>No products in this category.</p>";
       return;
     }
+
+    const dotCount = list.length;
+    const dotsHtml = dotCount > 1
+      ? `<div class="carousel-dots">${list.map((_, i) => `<button class="carousel-dot${i === 0 ? " active" : ""}" data-dot-index="${i}" aria-label="Go to product ${i + 1}"></button>`).join("")}</div>`
+      : "";
+
     root.innerHTML = `
-      <div class="carousel" role="list">
-        ${list.map((p, i) => renderCard(p, i)).join("")}
+      <div class="carousel-wrapper">
+        <button class="carousel-arrow carousel-arrow--left" aria-label="Previous" disabled>${ARROW_LEFT_SVG}</button>
+        <div class="carousel" role="list">
+          ${list.map((p, i) => renderCard(p, i)).join("")}
+        </div>
+        <button class="carousel-arrow carousel-arrow--right" aria-label="Next">${ARROW_RIGHT_SVG}</button>
       </div>
+      ${dotsHtml}
     `;
+
+    const wrapper = root.querySelector(".carousel-wrapper");
+    const track = root.querySelector(".carousel");
+    const leftBtn = root.querySelector(".carousel-arrow--left");
+    const rightBtn = root.querySelector(".carousel-arrow--right");
+    const dots = Array.from(root.querySelectorAll(".carousel-dot"));
+    const cardWidth = 200 + 16; // card + gap
+
+    // Arrow click handlers: scroll by one visible "page" of cards
+    const scrollAmount = () => {
+      const visible = Math.max(1, Math.floor(track.clientWidth / cardWidth));
+      return visible * cardWidth;
+    };
+    leftBtn.addEventListener("click", () => { track.scrollBy({ left: -scrollAmount(), behavior: "smooth" }); });
+    rightBtn.addEventListener("click", () => { track.scrollBy({ left: scrollAmount(), behavior: "smooth" }); });
+
+    // Dot click handler: scroll to that card
+    dots.forEach((dot) => {
+      dot.addEventListener("click", () => {
+        const idx = parseInt(dot.dataset.dotIndex, 10);
+        track.scrollTo({ left: idx * cardWidth, behavior: "smooth" });
+      });
+    });
+
+    // Update arrow/dot state on scroll
+    let scrollRaf = 0;
+    track.addEventListener("scroll", () => {
+      cancelAnimationFrame(scrollRaf);
+      scrollRaf = requestAnimationFrame(() => updateScrollState(wrapper, track, leftBtn, rightBtn, dots));
+    }, { passive: true });
+
+    // Initial state
+    requestAnimationFrame(() => updateScrollState(wrapper, track, leftBtn, rightBtn, dots));
+
+    // Card click/keyboard handlers
     root.querySelectorAll(".carousel-card").forEach((card) => {
       const openDetail = () => {
         const index = parseInt(card.dataset.productIndex, 10);
