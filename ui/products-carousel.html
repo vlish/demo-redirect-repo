@@ -194,6 +194,122 @@
     color: #666;
     cursor: not-allowed;
   }
+
+  /* Product detail modal (same content as product-detail widget) */
+  .detail-modal-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 100;
+    background: rgba(0, 0, 0, 0.45);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+    box-sizing: border-box;
+    animation: detail-modal-fade 0.2s ease;
+  }
+  .detail-modal-backdrop[aria-hidden="true"] {
+    display: none;
+  }
+  @keyframes detail-modal-fade {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+  .detail-modal {
+    background: #fff;
+    border-radius: 12px;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.2);
+    max-width: 420px;
+    width: 100%;
+    max-height: 90vh;
+    overflow: auto;
+    position: relative;
+    animation: detail-modal-scale 0.25s ease;
+  }
+  @keyframes detail-modal-scale {
+    from { opacity: 0; transform: scale(0.96); }
+    to { opacity: 1; transform: scale(1); }
+  }
+  .detail-modal-close {
+    position: absolute;
+    top: 0.75rem;
+    right: 0.75rem;
+    z-index: 2;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    border: none;
+    background: rgba(0, 0, 0, 0.06);
+    color: #333;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    transition: background 0.15s ease;
+  }
+  .detail-modal-close:hover {
+    background: rgba(0, 0, 0, 0.12);
+  }
+  .detail-modal-close svg {
+    width: 20px;
+    height: 20px;
+    stroke: currentColor;
+    stroke-width: 2;
+    fill: none;
+  }
+  .detail-modal .detail-image {
+    width: 100%;
+    aspect-ratio: 4 / 3;
+    object-fit: contain;
+    background: #f5f5f5;
+    display: block;
+    border-radius: 12px 12px 0 0;
+  }
+  .detail-modal .detail-body {
+    padding: 1rem 1.25rem 1.25rem;
+  }
+  .detail-modal .detail-title {
+    font-size: 1.25rem;
+    font-weight: 600;
+    line-height: 1.3;
+    margin: 0 0 0.5rem 0;
+    padding-right: 2rem;
+  }
+  .detail-modal .detail-description {
+    font-size: 0.95rem;
+    color: #555;
+    line-height: 1.6;
+    margin: 0 0 1rem 0;
+    white-space: pre-wrap;
+  }
+  .detail-modal .detail-price {
+    font-size: 1.1rem;
+    font-weight: 600;
+    margin: 0 0 1rem 0;
+  }
+  .detail-modal .detail-cta {
+    display: block;
+    width: 100%;
+    padding: 0.75rem 1rem;
+    font-size: 1rem;
+    font-weight: 600;
+    color: #1F2633;
+    background: #00C2C2;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    text-align: center;
+    transition: background 0.15s ease;
+  }
+  .detail-modal .detail-cta:hover {
+    background: #00a8a8;
+  }
+  .detail-modal .detail-cta:disabled {
+    background: #e0e0e0;
+    color: #666;
+    cursor: not-allowed;
+  }
 </style>
 <div id="root">
   <p style="color:#666; font-family: system-ui, sans-serif;">Loading…</p>
@@ -251,7 +367,67 @@
     `;
   };
 
-  const openProductDetail = (product) => {
+  const CLOSE_SVG = '<svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+
+  /** Renders product into the detail modal (same layout as product-detail widget). */
+  function renderDetailContent(container, product) {
+    if (!container || !product) return;
+    const title = escape(product.title ?? product.name ?? "");
+    const description = escape(product.description ?? "");
+    const priceFormatted = formatPrice(product.amount, product.currency);
+    const imageUrl = product.image && /^https?:\/\//i.test(String(product.image))
+      ? String(product.image).replace(/"/g, "&quot;")
+      : null;
+    const imgHtml = imageUrl
+      ? `<img class="detail-image" src="${imageUrl}" alt="${title}">`
+      : "";
+    const hasPrice = product.priceId != null && String(product.priceId).trim() !== "";
+    container.innerHTML = `
+      ${imgHtml}
+      <div class="detail-body">
+        <h1 class="detail-title" id="detail-modal-title">${title}</h1>
+        ${description ? `<p class="detail-description">${description}</p>` : ""}
+        ${priceFormatted ? `<p class="detail-price">${escape(priceFormatted)}</p>` : ""}
+        <button type="button" class="detail-cta" data-price-id="${escape(product.priceId ?? "")}"
+          ${hasPrice ? "" : "disabled"}>${hasPrice ? "Add to cart" : "Price on request"}</button>
+      </div>
+    `;
+    const cta = container.querySelector(".detail-cta");
+    if (cta) {
+      cta.addEventListener("click", (e) => e.stopPropagation());
+    }
+  }
+
+  function openProductDetail(product) {
+    const root = document.getElementById("root");
+    let backdrop = root.querySelector(".detail-modal-backdrop");
+    if (!backdrop) {
+      backdrop = document.createElement("div");
+      backdrop.className = "detail-modal-backdrop";
+      backdrop.setAttribute("aria-hidden", "true");
+      backdrop.innerHTML = `
+        <div class="detail-modal" role="dialog" aria-modal="true" aria-labelledby="detail-modal-title">
+          <button type="button" class="detail-modal-close" aria-label="Close">${CLOSE_SVG}</button>
+          <div class="detail-modal-content"></div>
+        </div>
+      `;
+      const modal = backdrop.querySelector(".detail-modal");
+      const content = backdrop.querySelector(".detail-modal-content");
+      const closeBtn = backdrop.querySelector(".detail-modal-close");
+      const close = () => {
+        backdrop.setAttribute("aria-hidden", "true");
+        content.innerHTML = "";
+      };
+      backdrop.addEventListener("click", (e) => { if (e.target === backdrop) close(); });
+      closeBtn.addEventListener("click", close);
+      document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape" && backdrop.getAttribute("aria-hidden") !== "true") close();
+      });
+      root.appendChild(backdrop);
+    }
+    const content = root.querySelector(".detail-modal-content");
+    renderDetailContent(content, product);
+    backdrop.setAttribute("aria-hidden", "false");
     if (window.openai?.callTool) {
       window.openai.callTool("view-product-detail", {
         priceId: product.priceId ?? null,
@@ -262,7 +438,7 @@
         currency: product.currency ?? null,
       });
     }
-  };
+  }
 
   const ARROW_LEFT_SVG = '<svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>';
   const ARROW_RIGHT_SVG = '<svg viewBox="0 0 24 24"><polyline points="9 6 15 12 9 18"/></svg>';
