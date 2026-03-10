@@ -97,30 +97,20 @@
     position: fixed;
     inset: 0;
     z-index: 1000;
-    background: rgba(0, 0, 0, 0.5);
-    align-items: center;
-    justify-content: center;
-    padding: 1rem;
+    background: #fff;
     font-family: system-ui, -apple-system, sans-serif;
+    flex-direction: column;
   }
   .fullscreen-overlay.is-open {
     display: flex;
-  }
-  .fullscreen-content {
-    background: #fff;
-    border-radius: 12px;
-    max-width: 400px;
-    width: 100%;
-    max-height: 90vh;
-    overflow-y: auto;
-    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.15);
   }
   .fullscreen-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 1rem 1rem 0;
-    gap: 0.5rem;
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid #e0e0e0;
+    flex-shrink: 0;
   }
   .fullscreen-close {
     flex-shrink: 0;
@@ -129,7 +119,7 @@
     padding: 0;
     border: none;
     background: #f0f0f0;
-    border-radius: 8px;
+    border-radius: 50%;
     cursor: pointer;
     font-size: 1.25rem;
     line-height: 1;
@@ -142,16 +132,30 @@
     outline: 2px solid #00C2C2;
     outline-offset: 2px;
   }
+  .fullscreen-header-title {
+    font-size: 1rem;
+    font-weight: 600;
+    margin: 0;
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
   .fullscreen-body {
-    padding: 1rem;
+    flex: 1;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
   }
   .fullscreen-image {
     width: 100%;
-    aspect-ratio: 1;
+    aspect-ratio: 4 / 3;
     object-fit: cover;
-    border-radius: 8px;
     background: #f5f5f5;
-    margin-bottom: 1rem;
+    display: block;
+  }
+  .fullscreen-details {
+    padding: 1rem;
   }
   .fullscreen-title {
     font-size: 1.25rem;
@@ -167,26 +171,38 @@
     white-space: pre-wrap;
   }
   .fullscreen-price {
-    font-size: 1rem;
+    font-size: 1.1rem;
     font-weight: 600;
-    margin: 0 0 1rem 0;
+    margin: 0;
+  }
+  .fullscreen-footer {
+    flex-shrink: 0;
+    padding: 0.75rem 1rem;
+    border-top: 1px solid #e0e0e0;
+  }
+  .fullscreen-footer .carousel-card-cta {
+    display: block;
+    width: 100%;
   }
 </style>
 <div id="root">
   <p style="color:#666; font-family: system-ui, sans-serif;">Loading…</p>
 </div>
-<div id="product-fullscreen" class="fullscreen-overlay" role="dialog" aria-modal="true" aria-labelledby="fullscreen-title">
-  <div class="fullscreen-content">
-    <div class="fullscreen-header">
-      <h2 id="fullscreen-title" class="fullscreen-title" style="margin:0; flex:1;"></h2>
-      <button type="button" class="fullscreen-close" aria-label="Close">×</button>
-    </div>
-    <div class="fullscreen-body">
-      <img class="fullscreen-image" id="fullscreen-image" alt="" src="">
+<div id="product-fullscreen" class="fullscreen-overlay" role="dialog" aria-modal="true" aria-labelledby="fullscreen-header-title">
+  <div class="fullscreen-header">
+    <h2 id="fullscreen-header-title" class="fullscreen-header-title"></h2>
+    <button type="button" class="fullscreen-close" aria-label="Close">&#x2715;</button>
+  </div>
+  <div class="fullscreen-body">
+    <img class="fullscreen-image" id="fullscreen-image" alt="" src="">
+    <div class="fullscreen-details">
+      <h3 id="fullscreen-title" class="fullscreen-title"></h3>
       <p class="fullscreen-description" id="fullscreen-description"></p>
       <p class="fullscreen-price" id="fullscreen-price"></p>
-      <button type="button" class="carousel-card-cta" id="fullscreen-cta">Add to cart</button>
     </div>
+  </div>
+  <div class="fullscreen-footer">
+    <button type="button" class="carousel-card-cta" id="fullscreen-cta">Add to cart</button>
   </div>
 </div>
 
@@ -244,12 +260,14 @@
 
   const openFullscreen = (product) => {
     const overlay = document.getElementById("product-fullscreen");
+    const headerTitle = document.getElementById("fullscreen-header-title");
     const titleEl = document.getElementById("fullscreen-title");
     const imageEl = document.getElementById("fullscreen-image");
     const descEl = document.getElementById("fullscreen-description");
     const priceEl = document.getElementById("fullscreen-price");
     const ctaEl = document.getElementById("fullscreen-cta");
     const title = product.title ?? product.name ?? "";
+    headerTitle.textContent = title;
     titleEl.textContent = title;
     const imageUrl = product.image && /^https?:\/\//i.test(String(product.image)) ? product.image : "";
     imageEl.src = imageUrl;
@@ -313,9 +331,6 @@
   };
 
   document.querySelector(".fullscreen-close")?.addEventListener("click", closeFullscreen);
-  document.getElementById("product-fullscreen")?.addEventListener("click", (e) => {
-    if (e.target.id === "product-fullscreen") closeFullscreen();
-  });
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape" && document.getElementById("product-fullscreen")?.classList.contains("is-open")) {
       closeFullscreen();
