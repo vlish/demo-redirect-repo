@@ -15,6 +15,8 @@ if (!stripeSecretKey) {
 const stripe = new Stripe(stripeSecretKey);
 const productsCarouselUri = "ui://products-carousel.html";
 const productsCarouselHTML = readFileSync("ui/products-carousel.html", "utf8");
+const productDetailUri = "ui://product-detail.html";
+const productDetailHTML = readFileSync("ui/product-detail.html", "utf8");
 
 function createMcpServer() {
   const server = new McpServer({ name: "my-mcp-server", version: "1.0.0" });
@@ -228,6 +230,38 @@ function createMcpServer() {
     }
   );
 
+  server.registerTool(
+    "view-product-detail",
+    {
+      title: "View product details",
+      description:
+        "Shows full product details in a fullscreen view. Called from the product carousel when a user taps a product card.",
+      inputSchema: {
+        priceId: z.string().nullable(),
+        title: z.string(),
+        description: z.string(),
+        image: z.string().nullable(),
+        amount: z.number().nullable(),
+        currency: z.string().nullable(),
+      },
+      _meta: {
+        ui: { resourceUri: productDetailUri },
+        "openai/outputTemplate": productDetailUri,
+        "openai/toolInvocation/invoking": "Loading product…",
+        "openai/toolInvocation/invoked": "Product details",
+      },
+    },
+    async (product) => ({
+      structuredContent: product,
+      content: [
+        {
+          type: "text",
+          text: `Showing details for ${product.title}.`,
+        },
+      ],
+    })
+  );
+
   server.registerResource(
     "products-carousel-widget",
     productsCarouselUri,
@@ -238,6 +272,26 @@ function createMcpServer() {
           uri: uri.href,
           mimeType: "text/html+skybridge",
           text: productsCarouselHTML,
+          _meta: {
+            "openai/widgetCSP": {
+              resource_domains: ["https://files.stripe.com"],
+            },
+          },
+        },
+      ],
+    })
+  );
+
+  server.registerResource(
+    "product-detail-widget",
+    productDetailUri,
+    {},
+    async (uri) => ({
+      contents: [
+        {
+          uri: uri.href,
+          mimeType: "text/html+skybridge",
+          text: productDetailHTML,
           _meta: {
             "openai/widgetCSP": {
               resource_domains: ["https://files.stripe.com"],
@@ -284,6 +338,13 @@ const httpServer = createServer(async (req, res) => {
     res
       .writeHead(200, { "content-type": "text/html; charset=utf-8" })
       .end(productsCarouselHTML);
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/product-detail.html") {
+    res
+      .writeHead(200, { "content-type": "text/html; charset=utf-8" })
+      .end(productDetailHTML);
     return;
   }
 
