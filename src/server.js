@@ -43,6 +43,23 @@ function createMcpServer() {
 
   const getTax = () => 0;
 
+  /** Fetch all active products (Stripe list is paginated, default 10 per page). */
+  async function listAllActiveProducts(expand = []) {
+    const all = [];
+    let hasMore = true;
+    let startingAfter;
+    while (hasMore) {
+      const params = { active: true, limit: 100 };
+      if (expand.length) params.expand = expand;
+      if (startingAfter) params.starting_after = startingAfter;
+      const res = await stripe.products.list(params);
+      all.push(...res.data);
+      hasMore = res.has_more && res.data.length > 0;
+      if (hasMore) startingAfter = res.data[res.data.length - 1].id;
+    }
+    return all;
+  }
+
   server.registerTool(
     "buy-products",
     {
@@ -76,9 +93,7 @@ function createMcpServer() {
         "Returns a distinct list of product categories. Use this when the user wants to see what categories are available before browsing products.",
     },
     async () => {
-      const { data: products } = await stripe.products.list({
-        active: true,
-      });
+      const products = await listAllActiveProducts();
       const categories = [
         ...new Set(
           products
@@ -115,10 +130,7 @@ function createMcpServer() {
     },
     async ({ category }) => {
       const normalizedCategory = String(category).trim();
-      const { data: products } = await stripe.products.list({
-        active: true,
-        expand: ["data.default_price"],
-      });
+      const products = await listAllActiveProducts(["data.default_price"]);
       const inCategory = products
         .filter((p) => {
           const cat =
