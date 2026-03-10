@@ -1,0 +1,165 @@
+<style>
+  .carousel {
+    display: flex;
+    gap: 1rem;
+    overflow-x: auto;
+    padding: 0.5rem 0;
+    scroll-snap-type: x mandatory;
+    -webkit-overflow-scrolling: touch;
+  }
+  .carousel::-webkit-scrollbar {
+    height: 6px;
+  }
+  .carousel::-webkit-scrollbar-thumb {
+    background: #ccc;
+    border-radius: 3px;
+  }
+  .carousel-card {
+    flex: 0 0 auto;
+    width: 200px;
+    scroll-snap-align: start;
+    border: 1px solid #e0e0e0;
+    border-radius: 10px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    font-family: system-ui, -apple-system, sans-serif;
+  }
+  .carousel-card-image {
+    width: 100%;
+    aspect-ratio: 1;
+    object-fit: cover;
+    background: #f5f5f5;
+  }
+  .carousel-card-body {
+    padding: 0.75rem;
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+  }
+  .carousel-card-title {
+    font-weight: 600;
+    font-size: 0.95rem;
+    margin: 0 0 0.35rem 0;
+    line-height: 1.25;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  .carousel-card-description {
+    font-size: 0.85rem;
+    color: #555;
+    margin: 0 0 0.35rem 0;
+    line-height: 1.35;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    flex: 1;
+  }
+  .carousel-card-price {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: #0a7c42;
+    margin: 0 0 0.5rem 0;
+  }
+  .carousel-card-cta {
+    display: inline-block;
+    padding: 0.5rem 1rem;
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: #fff;
+    background: #0a7c42;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    text-align: center;
+    transition: background 0.15s ease;
+  }
+  .carousel-card-cta:hover {
+    background: #086b38;
+  }
+</style>
+<div id="root">
+  <p style="color:#666; font-family: system-ui, sans-serif;">Loading…</p>
+</div>
+
+<script>
+  const escape = (s) => {
+    if (s == null) return "";
+    const t = String(s);
+    return t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  };
+
+  const formatPrice = (amount, currency) => {
+    if (amount == null || currency == null) return "";
+    const code = String(currency).toUpperCase();
+    const zeroDecimal = ["jpy", "krw", "vnd"].includes(code.toLowerCase());
+    const value = zeroDecimal ? amount : amount / 100;
+    try {
+      return new Intl.NumberFormat(undefined, {
+        style: "currency",
+        currency: code,
+      }).format(value);
+    } catch {
+      return zeroDecimal ? `${code} ${value}` : `${code} ${value.toFixed(2)}`;
+    }
+  };
+
+  const renderCard = (product) => {
+    const title = escape(product.title ?? product.name ?? "");
+    const description = escape(product.description ?? "");
+    const priceFormatted = formatPrice(product.amount, product.currency);
+    const priceHtml = priceFormatted
+      ? `<p class="carousel-card-price">${escape(priceFormatted)}</p>`
+      : "";
+    const imageUrl = product.image && /^https?:\/\//i.test(String(product.image))
+      ? String(product.image).replace(/"/g, "&quot;")
+      : null;
+    const imgHtml = imageUrl
+      ? `<img class="carousel-card-image" src="${imageUrl}" alt="${title}" loading="lazy">`
+      : `<div class="carousel-card-image" aria-hidden="true"></div>`;
+    return `
+      <div class="carousel-card">
+        ${imgHtml}
+        <div class="carousel-card-body">
+          <h3 class="carousel-card-title">${title}</h3>
+          ${description ? `<p class="carousel-card-description">${description}</p>` : ""}
+          ${priceHtml}
+          <button type="button" class="carousel-card-cta" data-price-id="${escape(product.priceId ?? "")}">Add to cart</button>
+        </div>
+      </div>
+    `;
+  };
+
+  const renderCarousel = (products) => {
+    const root = document.getElementById("root");
+    const list = Array.isArray(products) ? products : [];
+    if (list.length === 0) {
+      root.innerHTML = "<p style='color:#666; font-family: system-ui, sans-serif;'>No products in this category.</p>";
+      return;
+    }
+    root.innerHTML = `
+      <div class="carousel" role="list">
+        ${list.map(renderCard).join("")}
+      </div>
+    `;
+    root.querySelectorAll(".carousel-card-cta").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        // Placeholder: Add to cart — no functionality yet
+      });
+    });
+  };
+
+  const handleSetGlobal = (event) => {
+    const globals = event.detail?.globals;
+    if (!globals?.toolOutput?.products) return;
+    const { products } = globals.toolOutput;
+    renderCarousel(products);
+  };
+
+  window.addEventListener("openai:set_globals", handleSetGlobal, {
+    passive: true,
+  });
+</script>

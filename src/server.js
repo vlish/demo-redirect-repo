@@ -1,0 +1,325 @@
+import "dotenv/config";
+import { createServer } from "node:http";
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+import Stripe from "stripe";
+import { z } from "zod";
+
+const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
+if (!stripeSecretKey) {
+  throw new Error("STRIPE_SECRET_KEY environment variable is required");
+}
+const stripe = new Stripe(stripeSecretKey);
+const productsCarouselUri = "ui://products-carousel.html";
+const productsCarouselHTML = readFileSync("ui/products-carousel.html", "utf8");
+
+function createMcpServer() {
+  const server = new McpServer({ name: "my-mcp-server", version: "1.0.0" });
+
+  async function createCheckoutSession(priceIds) {
+    const lineItems = priceIds.map((price) => ({ price, quantity: 1 }));
+    const session = await stripe.checkout.sessions.create({
+      mode: "payment",
+      line_items: lineItems,
+      success_url: "https://chat.openai.com/",
+    });
+    return session;
+  }
+
+  /**
+   * Parse checkout session id from instant checkout: "priceId1,priceId2::uuid"
+   * Returns { priceIds: string[], uuid: string }.
+   */
+  function parseCheckoutSessionId(checkoutSessionId) {
+    const [front, uuid] = String(checkoutSessionId).split("::");
+    const priceIds = front ? front.split(",").filter(Boolean) : [];
+    return { priceIds, uuid: uuid || "" };
+  }
+
+  const getTax = () => 0;
+
+  server.registerTool(
+    "buy-products",
+    {
+      title: "Buy products",
+      description:
+        "Create a checkout page link for purchasing the selected products",
+      inputSchema: { priceIds: z.array(z.string()) },
+    },
+    async ({ priceIds }) => {
+      const session = await createCheckoutSession(priceIds);
+      return {
+        content: [
+          {
+            type: "text",
+            text: `[Complete your purchase here](${session.url})`,
+          },
+        ],
+        structuredContent: {
+          checkoutSessionId: session.id,
+          checkoutSessionUrl: session.url,
+        },
+      };
+    }
+  );
+
+  server.registerTool(
+    "list-categories",
+    {
+      title: "List categories",
+      description:
+        "Returns a distinct list of product categories. Use this when the user wants to see what categories are available before browsing products.",
+    },
+    async () => {
+      const { data: products } = await stripe.products.list({
+        active: true,
+      });
+      const categories = [
+        ...new Set(
+          products
+            .filter(
+              (p) =>
+                p.metadata &&
+                typeof p.metadata.category === "string" &&
+                p.metadata.category.trim() !== ""
+            )
+            .map((p) => String(p.metadata.category).trim())
+            .sort((a, b) => a.localeCompare(b, "en", { sensitivity: "base" }))
+        ),
+      ];
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Available categories: ${categories.join(", ") || "none (no products have a category set in metadata)"}.`,
+          },
+        ],
+        structuredContent: { categories },
+      };
+    }
+  );
+
+  server.registerTool(
+    "discover-by-category",
+    {
+      title: "Discover products by category",
+      description:
+        "Returns products in the given category. Call this when the user wants to browse or discover products in a specific category (e.g. after listing categories).",
+      inputSchema: { category: z.string() },
+      _meta: { "openai/outputTemplate": productsCarouselUri },
+    },
+    async ({ category }) => {
+      const normalizedCategory = String(category).trim();
+      const { data: products } = await stripe.products.list({
+        active: true,
+        expand: ["data.default_price"],
+      });
+      const inCategory = products
+        .filter((p) => {
+          const cat =
+            p.metadata && typeof p.metadata.category === "string"
+              ? String(p.metadata.category).trim()
+              : "";
+          return (
+            cat !== "" &&
+            cat.localeCompare(normalizedCategory, "en", { sensitivity: "base" }) === 0
+          );
+        })
+        .filter((p) => p.default_price)
+        .map((p) => {
+          const price =
+            typeof p.default_price === "object" ? p.default_price : null;
+          const priceId =
+            typeof p.default_price === "string"
+              ? p.default_price
+              : price?.id ?? p.default_price;
+          return {
+            priceId,
+            title: p.name,
+            description: p.description ?? "",
+            image:
+              Array.isArray(p.images) && p.images.length > 0
+                ? p.images[0]
+                : null,
+            amount: price?.unit_amount ?? null,
+            currency: price?.currency ?? null,
+          };
+        });
+      return {
+        content: [],
+        structuredContent: { products: inCategory },
+      };
+    }
+  );
+
+  const billingAddressSchema = z.object({
+    name: z.string(),
+    line_one: z.string(),
+    line_two: z.string().nullable(),
+    city: z.string(),
+    state: z.string(),
+    country: z.string(),
+    postal_code: z.string(),
+    phone_number: z.string().nullable(),
+  });
+
+  server.registerTool(
+    "complete_checkout",
+    {
+      title: "Complete checkout",
+      description:
+        "Complete the checkout and process the payment (instant checkout)",
+      inputSchema: {
+        checkout_session_id: z.string(),
+        buyer: z
+          .object({
+            name: z.string().nullable(),
+            email: z.string().nullable(),
+            phone_number: z.string().nullable(),
+          })
+          .nullable(),
+        payment_data: z.object({
+          token: z.string(),
+          provider: z.string(),
+          billing_address: billingAddressSchema.nullable(),
+        }),
+      },
+    },
+    async ({ checkout_session_id, buyer, payment_data }) => {
+      const { priceIds } = parseCheckoutSessionId(checkout_session_id);
+      if (!priceIds.length) {
+        throw new Error("Invalid checkout_session_id: no price IDs");
+      }
+      const prices = await Promise.all(
+        priceIds.map((id) => stripe.prices.retrieve(id))
+      );
+      const totalAmount = prices.reduce(
+        (sum, p) => sum + (p.unit_amount ?? 0),
+        0
+      );
+      const tax = getTax();
+      const currency = prices[0]?.currency ?? "usd";
+
+      await stripe.paymentIntents.create({
+        amount: totalAmount + tax,
+        currency,
+        confirm: true,
+        shared_payment_granted_token: payment_data.token,
+      });
+
+      return {
+        content: [],
+        structuredContent: {
+          id: checkout_session_id,
+          status: "completed",
+          currency,
+          buyer,
+          line_items: [],
+          order: {
+            id: "123",
+            checkout_session_id,
+            permalink_url: "",
+          },
+        },
+      };
+    }
+  );
+
+  server.registerResource(
+    "products-carousel-widget",
+    productsCarouselUri,
+    {},
+    async (uri) => ({
+      contents: [
+        {
+          uri: uri.href,
+          mimeType: "text/html+skybridge",
+          text: productsCarouselHTML,
+          _meta: {
+            "openai/widgetCSP": {
+              resource_domains: ["https://files.stripe.com"],
+            },
+          },
+        },
+      ],
+    })
+  );
+
+  return server;
+}
+
+const port = Number(process.env.PORT ?? 8787);
+const MCP_PATH = "/mcp";
+
+const httpServer = createServer(async (req, res) => {
+  if (!req.url) {
+    res.writeHead(400).end("Missing URL");
+    return;
+  }
+
+  const url = new URL(req.url, `http://${req.headers.host ?? "localhost"}`);
+
+  if (req.method === "OPTIONS" && url.pathname === MCP_PATH) {
+    res.writeHead(204, {
+      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
+      "Access-Control-Allow-Headers": "content-type, mcp-session-id",
+      "Access-Control-Expose-Headers": "Mcp-Session-Id",
+    });
+    res.end();
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/") {
+    res
+      .writeHead(200, { "content-type": "text/plain" })
+      .end("Stripe checkout MCP server");
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/products-carousel.html") {
+    res
+      .writeHead(200, { "content-type": "text/html; charset=utf-8" })
+      .end(productsCarouselHTML);
+    return;
+  }
+
+  const MCP_METHODS = new Set(["POST", "GET", "DELETE"]);
+  if (url.pathname === MCP_PATH && req.method && MCP_METHODS.has(req.method)) {
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Expose-Headers", "Mcp-Session-Id");
+
+    const server = createMcpServer();
+    const transport = new StreamableHTTPServerTransport({
+      sessionIdGenerator: undefined,
+      enableJsonResponse: true,
+    });
+
+    res.on("close", () => {
+      transport.close();
+      server.close();
+    });
+
+    try {
+      await server.connect(transport);
+      await transport.handleRequest(req, res);
+    } catch (error) {
+      console.error("Error handling MCP request:", error);
+      if (!res.headersSent) {
+        res.writeHead(500).end("Internal server error");
+      }
+    }
+    return;
+  }
+
+  res.writeHead(404).end("Not Found");
+});
+
+httpServer.listen(port, () => {
+  console.log(
+    `MCP server listening on http://localhost:${port}${MCP_PATH}`
+  );
+});
