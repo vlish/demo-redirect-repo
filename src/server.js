@@ -17,6 +17,8 @@ const productsCarouselUri = "ui://products-carousel.html";
 const productsCarouselHTML = readFileSync("ui/products-carousel.html", "utf8");
 const productDetailUri = "ui://product-detail.html";
 const productDetailHTML = readFileSync("ui/product-detail.html", "utf8");
+const checkoutRedirectUri = "ui://checkout-redirect.html";
+const checkoutRedirectHTML = readFileSync("ui/checkout-redirect.html", "utf8");
 
 /** Module-level cart storage so carts persist across MCP requests. */
 const carts = new Map();
@@ -95,13 +97,14 @@ function createMcpServer() {
         content: [
           {
             type: "text",
-            text: `[Complete your purchase here](<${session.url}>)`,
+            text: `[Complete your purchase here](${session.url})`,
           },
         ],
         structuredContent: {
           checkoutSessionId: session.id,
           checkoutSessionUrl: session.url,
         },
+        _meta: { "openai/outputTemplate": checkoutRedirectUri },
       };
     }
   );
@@ -500,6 +503,26 @@ function createMcpServer() {
           _meta: {
             "openai/widgetCSP": {
               resource_domains: ["https://files.stripe.com"],
+            },
+          },
+        },
+      ],
+    })
+  );
+
+  server.registerResource(
+    "checkout-redirect-widget",
+    checkoutRedirectUri,
+    {},
+    async (uri) => ({
+      contents: [
+        {
+          uri: uri.href,
+          mimeType: "text/html+skybridge",
+          text: checkoutRedirectHTML,
+          _meta: {
+            "openai/widgetCSP": {
+              redirect_domains: ["https://checkout.stripe.com"],
             },
           },
         },

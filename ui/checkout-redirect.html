@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Redirecting to checkout</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      background: #f8f9fa;
+      color: #1a1a1a;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 1rem;
+    }
+    .redirect-box {
+      text-align: center;
+      padding: 2rem;
+    }
+    .redirect-spinner {
+      width: 40px;
+      height: 40px;
+      margin: 0 auto 1rem;
+      border: 3px solid #e0e0e0;
+      border-top-color: #00C2C2;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    .redirect-text {
+      font-size: 1rem;
+      color: #555;
+    }
+  </style>
+</head>
+<body>
+  <div class="redirect-box">
+    <div class="redirect-spinner" aria-hidden="true"></div>
+    <p class="redirect-text" id="message">Redirecting to checkout…</p>
+  </div>
+<script>
+  function openCheckoutUrl(url) {
+    if (!url || typeof url !== "string") return;
+    if (window.openai?.openExternal) {
+      window.openai.openExternal({ href: url });
+    } else {
+      window.open(url, "_top");
+    }
+  }
+
+  function getUrlFromPayload(payload) {
+    if (!payload) return null;
+    return payload.checkoutSessionUrl ?? payload.structuredContent?.checkoutSessionUrl ?? null;
+  }
+
+  function readUrlAndRedirect() {
+    const payload = window.openai?.toolOutput ?? window.__openaiToolOutput;
+    const url = getUrlFromPayload(payload);
+    if (url) {
+      openCheckoutUrl(url);
+      return;
+    }
+    window.__openaiToolOutput = payload;
+  }
+
+  readUrlAndRedirect();
+
+  window.addEventListener("openai:set_globals", (event) => {
+    const globals = event.detail?.globals;
+    const output = globals?.toolOutput ?? globals?.structuredContent ?? globals;
+    const url = getUrlFromPayload(output) ?? output?.checkoutSessionUrl;
+    if (url) openCheckoutUrl(url);
+  }, { passive: true });
+</script>
+</body>
+</html>
