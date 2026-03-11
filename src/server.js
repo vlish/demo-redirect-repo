@@ -476,6 +476,7 @@ function createMcpServer() {
           _meta: {
             "openai/widgetCSP": {
               resource_domains: ["https://files.stripe.com"],
+              redirect_domains: ["https://checkout.stripe.com"],
             },
           },
         },
