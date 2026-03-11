@@ -20,6 +20,8 @@ const productDetailHTML = readFileSync("ui/product-detail.html", "utf8");
 
 /** Module-level cart storage so carts persist across MCP requests. */
 const carts = new Map();
+/** Latest cart id updated by add-to-cart; used so a new widget can load current cart without knowing cartId. */
+let latestCartId = null;
 
 function createMcpServer() {
   const server = new McpServer({ name: "my-mcp-server", version: "1.0.0" });
@@ -85,7 +87,10 @@ function createMcpServer() {
         };
       }
       const session = await createCheckoutSession(ids);
-      if (cartId && carts.has(cartId)) carts.delete(cartId);
+      if (cartId && carts.has(cartId)) {
+        carts.delete(cartId);
+        if (latestCartId === cartId) latestCartId = null;
+      }
       return {
         content: [
           {
@@ -123,6 +128,7 @@ function createMcpServer() {
       }
       const cart = carts.get(id);
       cart.items.push({ priceId, title, amount, currency });
+      latestCartId = id;
       const itemCount = cart.items.length;
       const subtotal = cart.items.reduce((s, i) => s + (i.amount ?? 0), 0);
       const cartCurrency =
@@ -150,7 +156,7 @@ function createMcpServer() {
     {
       title: "Get cart",
       description:
-        "Retrieve the current shopping cart by cartId. Returns items, count, and subtotal.",
+        "Retrieve a shopping cart by cartId. Returns items, count, and subtotal.",
       inputSchema: { cartId: z.string() },
     },
     async ({ cartId }) => {
@@ -169,6 +175,40 @@ function createMcpServer() {
           { type: "text", text: `Cart has ${itemCount} item${itemCount !== 1 ? "s" : ""}.` },
         ],
         structuredContent: { cartId, items: cart.items, itemCount, subtotal, currency },
+      };
+    }
+  );
+
+  server.registerTool(
+    "get-current-cart",
+    {
+      title: "Get current cart",
+      description:
+        "Retrieve the current session's shopping cart (most recently updated). Use this when the carousel loads so the cart summary can be restored without a cartId.",
+      inputSchema: {},
+    },
+    async () => {
+      if (!latestCartId || !carts.has(latestCartId)) {
+        return {
+          content: [{ type: "text", text: "No cart yet." }],
+          structuredContent: { cartId: null, items: [], itemCount: 0, subtotal: 0, currency: "usd" },
+        };
+      }
+      const cart = carts.get(latestCartId);
+      const itemCount = cart.items.length;
+      const subtotal = cart.items.reduce((s, i) => s + (i.amount ?? 0), 0);
+      const currency = cart.items.find((i) => i.currency)?.currency || "usd";
+      return {
+        content: [
+          { type: "text", text: `Cart has ${itemCount} item${itemCount !== 1 ? "s" : ""}.` },
+        ],
+        structuredContent: {
+          cartId: latestCartId,
+          items: cart.items,
+          itemCount,
+          subtotal,
+          currency,
+        },
       };
     }
   );

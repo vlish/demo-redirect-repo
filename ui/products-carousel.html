@@ -468,10 +468,9 @@
     }
   }
 
-  function hydrateCartFromServer() {
-    if (!cart.id) return;
+  function loadCurrentCartFromServer() {
     if (!window.openai?.callTool) return;
-    window.openai.callTool("get-cart", { cartId: cart.id });
+    window.openai.callTool("get-current-cart", {});
   }
 
   restoreFromWidgetState();
@@ -497,8 +496,8 @@
 
   function applyCartData(data) {
     if (!data) return;
-    cart.id = data.cartId || cart.id;
-    cart.items = Array.isArray(data.items) ? data.items : cart.items;
+    cart.id = data.cartId ?? cart.id;
+    cart.items = Array.isArray(data.items) ? data.items : [];
     cart.currency = data.currency || cart.currency;
     persistWidgetState();
     updateCartSummary();
@@ -790,9 +789,9 @@
     const output = globals.toolOutput;
     if (output.products) {
       renderCarousel(output.products);
-      hydrateCartFromServer();
+      loadCurrentCartFromServer();
     }
-    if (output.cartId && output.items) {
+    if (output.cartId !== undefined && Array.isArray(output.items)) {
       applyCartData(output);
     }
   };
@@ -807,7 +806,7 @@
     if (!msg || msg.jsonrpc !== "2.0") return;
     if (msg.method !== "ui/notifications/tool-result") return;
     const sc = msg.params?.structuredContent;
-    if (sc?.cartId && sc?.items) {
+    if (sc && Array.isArray(sc.items)) {
       applyCartData(sc);
     }
   }, { passive: true });
