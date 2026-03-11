@@ -95,7 +95,7 @@ function createMcpServer() {
         content: [
           {
             type: "text",
-            text: `[Complete your purchase here](${session.url})`,
+            text: `[Complete your purchase here](<${session.url}>)`,
           },
         ],
         structuredContent: {
