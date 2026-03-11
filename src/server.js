@@ -70,7 +70,7 @@ function createMcpServer() {
     {
       title: "Buy products",
       description:
-        "Create a checkout page link for purchasing the selected products. Accepts either a list of priceIds or a cartId from the shopping cart.",
+        "Create a Stripe hosted checkout session for the given products. Accepts either priceIds (array) or cartId. Returns checkoutSessionUrl in structuredContent — open this URL to redirect the user to Stripe checkout. Use when the user wants to checkout, pay, or buy items in cart.",
       inputSchema: {
         priceIds: z.array(z.string()).optional(),
         cartId: z.string().optional(),

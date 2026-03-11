@@ -540,17 +540,32 @@
     }
   }
 
-  function checkout() {
+  async function checkout() {
     if (cart.items.length === 0) return;
-    if (window.openai?.callTool) {
-      const priceIds = cart.items.map((i) => i.priceId).filter(Boolean);
-      window.openai.callTool("buy-products", { priceIds, cartId: cart.id });
+    if (!window.openai?.callTool) return;
+    const priceIds = cart.items.map((i) => i.priceId).filter(Boolean);
+    try {
+      const result = await window.openai.callTool("buy-products", {
+        priceIds,
+        cartId: cart.id,
+      });
+      const url =
+        result?.structuredContent?.checkoutSessionUrl ??
+        result?.checkoutSessionUrl;
+      if (url && typeof url === "string") {
+        if (window.openai?.openExternal) {
+          window.openai.openExternal({ href: url });
+        } else {
+          window.open(url, "_top");
+        }
+      }
+    } finally {
+      cart.id = null;
+      cart.items = [];
+      cart.currency = "usd";
+      persistWidgetState();
+      updateCartSummary();
     }
-    cart.id = null;
-    cart.items = [];
-    cart.currency = "usd";
-    persistWidgetState();
-    updateCartSummary();
   }
 
   const renderCard = (product, index) => {
