@@ -468,9 +468,15 @@
     }
   }
 
-  function loadCurrentCartFromServer() {
+  async function loadCurrentCartFromServer() {
     if (!window.openai?.callTool) return;
-    window.openai.callTool("get-current-cart", {});
+    try {
+      const result = await window.openai.callTool("get-current-cart", {});
+      const data = result?.structuredContent ?? result;
+      if (data && Array.isArray(data.items)) {
+        applyCartData(data);
+      }
+    } catch (_) {}
   }
 
   restoreFromWidgetState();
