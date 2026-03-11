@@ -72,7 +72,7 @@ function createMcpServer() {
     {
       title: "Buy products",
       description:
-        "Create a Stripe hosted checkout session for the given products. Accepts either priceIds (array) or cartId. Returns checkoutSessionUrl in structuredContent — open this URL to redirect the user to Stripe checkout. Use when the user wants to checkout, pay, or buy items in cart.",
+        "Create a Stripe hosted checkout session for the given products. Accepts either priceIds (array) or cartId. Returns checkoutSessionUrl in structuredContent; the UI widget will redirect the user automatically. Do not include or mention the checkout URL in your response. Use when the user wants to checkout, pay, or buy items in cart.",
       inputSchema: {
         priceIds: z.array(z.string()).optional(),
         cartId: z.string().optional(),
@@ -95,7 +95,7 @@ function createMcpServer() {
         if (latestCartId === cartId) latestCartId = null;
       }
       return {
-        content: [],
+        content: [{ type: "text", text: "Redirecting you to checkout…" }],
         structuredContent: {
           checkoutSessionId: session.id,
           checkoutSessionUrl: session.url,
