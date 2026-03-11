@@ -17,8 +17,6 @@ const productsCarouselUri = "ui://products-carousel.html";
 const productsCarouselHTML = readFileSync("ui/products-carousel.html", "utf8");
 const productDetailUri = "ui://product-detail.html";
 const productDetailHTML = readFileSync("ui/product-detail.html", "utf8");
-const checkoutRedirectUri = "ui://checkout-redirect.html";
-const checkoutRedirectHTML = readFileSync("ui/checkout-redirect.html", "utf8");
 
 /** Module-level cart storage so carts persist across MCP requests. */
 const carts = new Map();
@@ -72,12 +70,11 @@ function createMcpServer() {
     {
       title: "Buy products",
       description:
-        "Create a Stripe hosted checkout session for the given products. Accepts either priceIds (array) or cartId. Returns checkoutSessionUrl in structuredContent; the UI widget will redirect the user automatically. Do not include or mention the checkout URL in your response. Use when the user wants to checkout, pay, or buy items in cart.",
+        "Create a Stripe hosted checkout session for the given products. Accepts either priceIds (array) or cartId. Returns checkoutSessionUrl in structuredContent — open this URL to redirect the user to Stripe checkout. Use when the user wants to checkout, pay, or buy items in cart.",
       inputSchema: {
         priceIds: z.array(z.string()).optional(),
         cartId: z.string().optional(),
       },
-      _meta: { "openai/outputTemplate": checkoutRedirectUri },
     },
     async ({ priceIds, cartId }) => {
       let ids = priceIds && priceIds.length > 0 ? priceIds : [];
@@ -95,7 +92,12 @@ function createMcpServer() {
         if (latestCartId === cartId) latestCartId = null;
       }
       return {
-        content: [{ type: "text", text: "Redirecting you to checkout…" }],
+        content: [
+          {
+            type: "text",
+            text: `[Complete your purchase here](${session.url})`,
+          },
+        ],
         structuredContent: {
           checkoutSessionId: session.id,
           checkoutSessionUrl: session.url,
@@ -498,26 +500,6 @@ function createMcpServer() {
           _meta: {
             "openai/widgetCSP": {
               resource_domains: ["https://files.stripe.com"],
-            },
-          },
-        },
-      ],
-    })
-  );
-
-  server.registerResource(
-    "checkout-redirect-widget",
-    checkoutRedirectUri,
-    {},
-    async (uri) => ({
-      contents: [
-        {
-          uri: uri.href,
-          mimeType: "text/html+skybridge",
-          text: checkoutRedirectHTML,
-          _meta: {
-            "openai/widgetCSP": {
-              redirect_domains: ["https://checkout.stripe.com"],
             },
           },
         },
