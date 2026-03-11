@@ -796,9 +796,14 @@
     const globals = event.detail?.globals;
     if (!globals?.toolOutput) return;
     const output = globals.toolOutput;
+    const metaCart = globals.toolResponseMetadata?.cart ?? globals._meta?.cart;
     if (output.products) {
+      if (metaCart && Array.isArray(metaCart.items)) {
+        applyCartData(metaCart);
+      } else {
+        loadCurrentCartFromServer();
+      }
       renderCarousel(output.products);
-      loadCurrentCartFromServer();
     }
     if (output.cartId !== undefined && Array.isArray(output.items)) {
       applyCartData(output);
@@ -814,8 +819,13 @@
     const msg = event.data;
     if (!msg || msg.jsonrpc !== "2.0") return;
     if (msg.method !== "ui/notifications/tool-result") return;
-    const sc = msg.params?.structuredContent;
-    if (sc && Array.isArray(sc.items)) {
+    const params = msg.params ?? {};
+    const sc = params.structuredContent;
+    const metaCart = params._meta?.cart ?? params.toolResponseMetadata?.cart;
+    if (sc?.products && metaCart && Array.isArray(metaCart.items)) {
+      applyCartData(metaCart);
+      renderCarousel(sc.products);
+    } else if (sc && Array.isArray(sc.items)) {
       applyCartData(sc);
     }
   }, { passive: true });

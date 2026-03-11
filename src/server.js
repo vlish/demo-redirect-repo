@@ -290,9 +290,26 @@ function createMcpServer() {
             currency: price?.currency ?? null,
           };
         });
+      const cartPayload =
+        latestCartId && carts.has(latestCartId)
+          ? (() => {
+              const c = carts.get(latestCartId);
+              const itemCount = c.items.length;
+              const subtotal = c.items.reduce((s, i) => s + (i.amount ?? 0), 0);
+              const currency = c.items.find((i) => i.currency)?.currency || "usd";
+              return {
+                cartId: latestCartId,
+                items: c.items,
+                itemCount,
+                subtotal,
+                currency,
+              };
+            })()
+          : { cartId: null, items: [], itemCount: 0, subtotal: 0, currency: "usd" };
       return {
         content: [],
         structuredContent: { products: inCategory },
+        _meta: { cart: cartPayload },
       };
     }
   );
