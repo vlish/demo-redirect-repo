@@ -77,6 +77,7 @@ function createMcpServer() {
         priceIds: z.array(z.string()).optional(),
         cartId: z.string().optional(),
       },
+      _meta: { "openai/outputTemplate": checkoutRedirectUri },
     },
     async ({ priceIds, cartId }) => {
       let ids = priceIds && priceIds.length > 0 ? priceIds : [];
@@ -94,17 +95,11 @@ function createMcpServer() {
         if (latestCartId === cartId) latestCartId = null;
       }
       return {
-        content: [
-          {
-            type: "text",
-            text: `[Complete your purchase here](${session.url})`,
-          },
-        ],
+        content: [],
         structuredContent: {
           checkoutSessionId: session.id,
           checkoutSessionUrl: session.url,
         },
-        _meta: { "openai/outputTemplate": checkoutRedirectUri },
       };
     }
   );
