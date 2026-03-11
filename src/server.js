@@ -123,8 +123,11 @@ function createMcpServer() {
     async ({ cartId, priceId, title, amount, currency }) => {
       let id = cartId && carts.has(cartId) ? cartId : null;
       if (!id) {
-        id = cartId || crypto.randomUUID();
-        carts.set(id, { items: [] });
+        id =
+          (latestCartId && carts.has(latestCartId) ? latestCartId : null) ||
+          cartId ||
+          crypto.randomUUID();
+        if (!carts.has(id)) carts.set(id, { items: [] });
       }
       const cart = carts.get(id);
       cart.items.push({ priceId, title, amount, currency });

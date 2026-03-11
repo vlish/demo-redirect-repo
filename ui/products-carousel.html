@@ -197,7 +197,10 @@
     margin: 0 0 0.5rem 0;
   }
   .carousel-card-cta {
-    display: inline-block;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
     padding: 0.5rem 1rem;
     font-size: 0.9rem;
     font-weight: 600;
@@ -209,6 +212,20 @@
     text-align: center;
     transition: background 0.15s ease;
     margin-top: auto;
+  }
+  .carousel-card-cta .cta-icon,
+  .detail-modal .detail-cta .cta-icon {
+    display: inline-flex;
+    width: 1em;
+    height: 1em;
+    flex-shrink: 0;
+  }
+  .carousel-card-cta .cta-icon svg,
+  .detail-modal .detail-cta .cta-icon svg {
+    width: 100%;
+    height: 100%;
+    fill: currentColor;
+    stroke: none;
   }
   .carousel-card-cta:hover {
     background: #00a8a8;
@@ -398,7 +415,7 @@
     padding: 0.5rem 1.25rem;
     font-size: 0.9rem;
     font-weight: 600;
-    color: #fff;
+    color: #1F2633;
     background: #00C2C2;
     border: none;
     border-radius: 20px;
@@ -483,6 +500,7 @@
   }
 
   const CART_SVG = '<svg viewBox="0 0 24 24"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>';
+  const ADD_TO_CART_HTML = `<span class="cta-icon">${CART_SVG}</span> Add to cart`;
 
   function updateCartSummary() {
     const bar = document.getElementById("cart-summary");
@@ -519,11 +537,11 @@
     updateCartSummary();
 
     if (triggerBtn) {
-      triggerBtn.textContent = "✓ Added";
+      triggerBtn.innerHTML = "✓ Added";
       triggerBtn.classList.add("added");
       triggerBtn.disabled = true;
       setTimeout(() => {
-        triggerBtn.textContent = "Add to cart";
+        triggerBtn.innerHTML = ADD_TO_CART_HTML;
         triggerBtn.classList.remove("added");
         triggerBtn.disabled = false;
       }, 1500);
@@ -589,7 +607,7 @@
           <h3 class="carousel-card-title">${title}</h3>
           ${description ? `<p class="carousel-card-description">${description}</p>` : ""}
           ${priceHtml}
-          <button type="button" class="carousel-card-cta" data-price-id="${escape(product.priceId ?? "")}">Add to cart</button>
+          <button type="button" class="carousel-card-cta" data-price-id="${escape(product.priceId ?? "")}">${ADD_TO_CART_HTML}</button>
         </div>
       </div>
     `;
@@ -617,7 +635,7 @@
         ${description ? `<p class="detail-description">${description}</p>` : ""}
         ${priceFormatted ? `<p class="detail-price">${escape(priceFormatted)}</p>` : ""}
         <button type="button" class="detail-cta" data-price-id="${escape(product.priceId ?? "")}"
-          ${hasPrice ? "" : "disabled"}>${hasPrice ? "Add to cart" : "Price on request"}</button>
+          ${hasPrice ? "" : "disabled"}>${hasPrice ? ADD_TO_CART_HTML : "Price on request"}</button>
       </div>
     `;
     const cta = container.querySelector(".detail-cta");
