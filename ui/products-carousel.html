@@ -471,7 +471,7 @@
   function tryReadCartFromMeta() {
     const meta = window.openai?.toolResponseMetadata;
     if (meta?.cart && Array.isArray(meta.cart.items)) {
-      applyCartData(meta.cart);
+      applyCartData(meta.cart, false);
     }
   }
 
@@ -497,12 +497,12 @@
     btn.disabled = count === 0;
   }
 
-  function applyCartData(data) {
+  function applyCartData(data, persist) {
     if (!data) return;
     cart.id = data.cartId ?? cart.id;
     cart.items = Array.isArray(data.items) ? data.items : [];
     cart.currency = data.currency || cart.currency;
-    persistWidgetState();
+    if (persist) persistWidgetState();
     updateCartSummary();
   }
 
@@ -786,19 +786,18 @@
     }
   };
 
+  let carouselRendered = false;
   const handleSetGlobal = (event) => {
     const globals = event.detail?.globals;
     if (!globals?.toolOutput) return;
     const output = globals.toolOutput;
-    const metaCart = globals.toolResponseMetadata?.cart ?? globals._meta?.cart;
-    if (output.products) {
+    if (output.products && !carouselRendered) {
+      carouselRendered = true;
+      const metaCart = globals.toolResponseMetadata?.cart ?? globals._meta?.cart;
       if (metaCart && Array.isArray(metaCart.items)) {
-        applyCartData(metaCart);
+        applyCartData(metaCart, false);
       }
       renderCarousel(output.products);
-    }
-    if (output.cartId !== undefined && Array.isArray(output.items)) {
-      applyCartData(output);
     }
   };
 
@@ -814,11 +813,14 @@
     const params = msg.params ?? {};
     const sc = params.structuredContent;
     const metaCart = params._meta?.cart ?? params.toolResponseMetadata?.cart;
-    if (sc?.products && metaCart && Array.isArray(metaCart.items)) {
-      applyCartData(metaCart);
+    if (sc?.products && !carouselRendered) {
+      carouselRendered = true;
+      if (metaCart && Array.isArray(metaCart.items)) {
+        applyCartData(metaCart, false);
+      }
       renderCarousel(sc.products);
     } else if (sc && Array.isArray(sc.items)) {
-      applyCartData(sc);
+      applyCartData(sc, false);
     }
   }, { passive: true });
 </script>
