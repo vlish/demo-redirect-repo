@@ -146,6 +146,34 @@ function createMcpServer() {
   );
 
   server.registerTool(
+    "get-cart",
+    {
+      title: "Get cart",
+      description:
+        "Retrieve the current shopping cart by cartId. Returns items, count, and subtotal.",
+      inputSchema: { cartId: z.string() },
+    },
+    async ({ cartId }) => {
+      const cart = carts.get(cartId);
+      if (!cart) {
+        return {
+          content: [{ type: "text", text: "Cart not found or expired." }],
+          structuredContent: { cartId, items: [], itemCount: 0, subtotal: 0, currency: "usd" },
+        };
+      }
+      const itemCount = cart.items.length;
+      const subtotal = cart.items.reduce((s, i) => s + (i.amount ?? 0), 0);
+      const currency = cart.items.find((i) => i.currency)?.currency || "usd";
+      return {
+        content: [
+          { type: "text", text: `Cart has ${itemCount} item${itemCount !== 1 ? "s" : ""}.` },
+        ],
+        structuredContent: { cartId, items: cart.items, itemCount, subtotal, currency },
+      };
+    }
+  );
+
+  server.registerTool(
     "list-categories",
     {
       title: "List categories",
