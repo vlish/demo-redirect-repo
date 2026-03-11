@@ -18,6 +18,9 @@ const productsCarouselHTML = readFileSync("ui/products-carousel.html", "utf8");
 const productDetailUri = "ui://product-detail.html";
 const productDetailHTML = readFileSync("ui/product-detail.html", "utf8");
 
+/** Module-level cart storage so carts persist across MCP requests. */
+const carts = new Map();
+
 function createMcpServer() {
   const server = new McpServer({ name: "my-mcp-server", version: "1.0.0" });
 
@@ -65,11 +68,24 @@ function createMcpServer() {
     {
       title: "Buy products",
       description:
-        "Create a checkout page link for purchasing the selected products",
-      inputSchema: { priceIds: z.array(z.string()) },
+        "Create a checkout page link for purchasing the selected products. Accepts either a list of priceIds or a cartId from the shopping cart.",
+      inputSchema: {
+        priceIds: z.array(z.string()).optional(),
+        cartId: z.string().optional(),
+      },
     },
-    async ({ priceIds }) => {
-      const session = await createCheckoutSession(priceIds);
+    async ({ priceIds, cartId }) => {
+      let ids = priceIds && priceIds.length > 0 ? priceIds : [];
+      if (ids.length === 0 && cartId && carts.has(cartId)) {
+        ids = carts.get(cartId).items.map((i) => i.priceId);
+      }
+      if (ids.length === 0) {
+        return {
+          content: [{ type: "text", text: "Cart is empty — nothing to check out." }],
+        };
+      }
+      const session = await createCheckoutSession(ids);
+      if (cartId && carts.has(cartId)) carts.delete(cartId);
       return {
         content: [
           {
@@ -80,6 +96,50 @@ function createMcpServer() {
         structuredContent: {
           checkoutSessionId: session.id,
           checkoutSessionUrl: session.url,
+        },
+      };
+    }
+  );
+
+  server.registerTool(
+    "add-to-cart",
+    {
+      title: "Add to cart",
+      description:
+        "Add a product to the shopping cart. Creates a new cart if no cartId is provided. Returns the updated cart summary.",
+      inputSchema: {
+        cartId: z.string().nullable(),
+        priceId: z.string(),
+        title: z.string(),
+        amount: z.number().nullable(),
+        currency: z.string().nullable(),
+      },
+    },
+    async ({ cartId, priceId, title, amount, currency }) => {
+      let id = cartId && carts.has(cartId) ? cartId : null;
+      if (!id) {
+        id = cartId || crypto.randomUUID();
+        carts.set(id, { items: [] });
+      }
+      const cart = carts.get(id);
+      cart.items.push({ priceId, title, amount, currency });
+      const itemCount = cart.items.length;
+      const subtotal = cart.items.reduce((s, i) => s + (i.amount ?? 0), 0);
+      const cartCurrency =
+        currency || cart.items.find((i) => i.currency)?.currency || "usd";
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Added "${title}" to cart. Cart now has ${itemCount} item${itemCount !== 1 ? "s" : ""}.`,
+          },
+        ],
+        structuredContent: {
+          cartId: id,
+          items: cart.items,
+          itemCount,
+          subtotal,
+          currency: cartCurrency,
         },
       };
     }

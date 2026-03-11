@@ -359,6 +359,68 @@
     color: #666;
     cursor: not-allowed;
   }
+
+  /* Cart summary bar */
+  .cart-summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.65rem 1rem;
+    border: 1px solid #e0e0e0;
+    border-radius: 10px;
+    margin-top: 0.75rem;
+    font-family: system-ui, -apple-system, sans-serif;
+    background: #fff;
+  }
+  .cart-info {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: #1a1a1a;
+  }
+  .cart-icon svg {
+    width: 20px;
+    height: 20px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    vertical-align: middle;
+  }
+  .cart-separator {
+    color: #999;
+    font-weight: 400;
+  }
+  .cart-checkout-btn {
+    padding: 0.5rem 1.25rem;
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: #fff;
+    background: #00C2C2;
+    border: none;
+    border-radius: 20px;
+    cursor: pointer;
+    transition: background 0.15s ease;
+    white-space: nowrap;
+  }
+  .cart-checkout-btn:hover {
+    background: #00a8a8;
+  }
+  .cart-checkout-btn:disabled {
+    background: #e0e0e0;
+    color: #999;
+    cursor: not-allowed;
+  }
+
+  /* "Added" state for Add to cart buttons */
+  .carousel-card-cta.added {
+    background: #e6fafa;
+    color: #00a8a8;
+    cursor: default;
+  }
 </style>
 <div id="root">
   <p style="color:#666; font-family: system-ui, sans-serif;">Loading…</p>
@@ -388,6 +450,69 @@
   };
 
   let currentProducts = [];
+
+  // ── Cart state ──
+  const cart = { id: null, items: [], currency: "usd" };
+
+  function generateCartId() {
+    return Date.now().toString(36) + Math.random().toString(36).slice(2);
+  }
+
+  const CART_SVG = '<svg viewBox="0 0 24 24"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>';
+
+  function updateCartSummary() {
+    const bar = document.getElementById("cart-summary");
+    if (!bar) return;
+    const count = cart.items.length;
+    const subtotal = cart.items.reduce((s, i) => s + (i.amount ?? 0), 0);
+    const cur = cart.currency || "usd";
+    const priceStr = formatPrice(subtotal, cur) || "$0.00";
+    bar.querySelector(".cart-count").textContent = `${count} item${count !== 1 ? "s" : ""}`;
+    bar.querySelector(".cart-total").textContent = priceStr;
+    const btn = bar.querySelector(".cart-checkout-btn");
+    btn.disabled = count === 0;
+  }
+
+  function addToCart(product, triggerBtn) {
+    if (!cart.id) cart.id = generateCartId();
+    cart.items.push({
+      priceId: product.priceId,
+      title: product.title ?? product.name ?? "",
+      amount: product.amount ?? 0,
+      currency: product.currency ?? "usd",
+    });
+    if (product.currency) cart.currency = product.currency;
+    updateCartSummary();
+
+    if (triggerBtn) {
+      triggerBtn.textContent = "✓ Added";
+      triggerBtn.classList.add("added");
+      triggerBtn.disabled = true;
+      setTimeout(() => {
+        triggerBtn.textContent = "Add to cart";
+        triggerBtn.classList.remove("added");
+        triggerBtn.disabled = false;
+      }, 1500);
+    }
+
+    if (window.openai?.callTool) {
+      window.openai.callTool("add-to-cart", {
+        cartId: cart.id,
+        priceId: product.priceId ?? "",
+        title: product.title ?? product.name ?? "",
+        amount: product.amount ?? null,
+        currency: product.currency ?? null,
+      });
+    }
+  }
+
+  function checkout() {
+    if (cart.items.length === 0) return;
+    if (window.openai?.callTool) {
+      const priceIds = cart.items.map((i) => i.priceId).filter(Boolean);
+      window.openai.callTool("buy-products", { priceIds, cartId: cart.id });
+    }
+  }
 
   const renderCard = (product, index) => {
     const title = escape(product.title ?? product.name ?? "");
@@ -442,9 +567,21 @@
       </div>
     `;
     const cta = container.querySelector(".detail-cta");
-    if (cta) {
-      cta.addEventListener("click", (e) => e.stopPropagation());
+    if (cta && !cta.disabled) {
+      cta.addEventListener("click", (e) => {
+        e.stopPropagation();
+        addToCart(product, null);
+        closeProductModal();
+      });
     }
+  }
+
+  function closeProductModal() {
+    const backdrop = document.querySelector(".detail-modal-backdrop");
+    if (!backdrop) return;
+    backdrop.setAttribute("aria-hidden", "true");
+    const content = backdrop.querySelector(".detail-modal-content");
+    if (content) content.innerHTML = "";
   }
 
   function openProductDetail(product) {
@@ -460,17 +597,10 @@
           <div class="detail-modal-content"></div>
         </div>
       `;
-      const modal = backdrop.querySelector(".detail-modal");
-      const content = backdrop.querySelector(".detail-modal-content");
-      const closeBtn = backdrop.querySelector(".detail-modal-close");
-      const close = () => {
-        backdrop.setAttribute("aria-hidden", "true");
-        content.innerHTML = "";
-      };
-      backdrop.addEventListener("click", (e) => { if (e.target === backdrop) close(); });
-      closeBtn.addEventListener("click", close);
+      backdrop.addEventListener("click", (e) => { if (e.target === backdrop) closeProductModal(); });
+      backdrop.querySelector(".detail-modal-close").addEventListener("click", closeProductModal);
       document.addEventListener("keydown", (e) => {
-        if (e.key === "Escape" && backdrop.getAttribute("aria-hidden") !== "true") close();
+        if (e.key === "Escape" && backdrop.getAttribute("aria-hidden") !== "true") closeProductModal();
       });
       root.appendChild(backdrop);
     }
@@ -524,6 +654,11 @@
       ? `<div class="carousel-dots">${list.map((_, i) => `<button class="carousel-dot${i === 0 ? " active" : ""}" data-dot-index="${i}" aria-label="Go to product ${i + 1}"></button>`).join("")}</div>`
       : "";
 
+    const cartCount = cart.items.length;
+    const cartSubtotal = cart.items.reduce((s, i) => s + (i.amount ?? 0), 0);
+    const cartCur = cart.currency || "usd";
+    const cartPriceStr = formatPrice(cartSubtotal, cartCur) || "$0.00";
+
     root.innerHTML = `
       <div class="carousel-wrapper">
         <button class="carousel-arrow carousel-arrow--left" aria-label="Previous" disabled>${ARROW_LEFT_SVG}</button>
@@ -533,6 +668,15 @@
         <button class="carousel-arrow carousel-arrow--right" aria-label="Next">${ARROW_RIGHT_SVG}</button>
       </div>
       ${dotsHtml}
+      <div id="cart-summary" class="cart-summary">
+        <div class="cart-info">
+          <span class="cart-icon">${CART_SVG}</span>
+          <span class="cart-count">${cartCount} item${cartCount !== 1 ? "s" : ""}</span>
+          <span class="cart-separator">&middot;</span>
+          <span class="cart-total">${cartPriceStr}</span>
+        </div>
+        <button type="button" class="cart-checkout-btn" ${cartCount === 0 ? "disabled" : ""}>Checkout &rarr;</button>
+      </div>
     `;
 
     const wrapper = root.querySelector(".carousel-wrapper");
@@ -590,8 +734,17 @@
     root.querySelectorAll(".carousel-card-cta").forEach((btn) => {
       btn.addEventListener("click", (e) => {
         e.stopPropagation();
+        const card = btn.closest(".carousel-card");
+        const index = parseInt(card?.dataset.productIndex, 10);
+        const product = currentProducts[index];
+        if (product) addToCart(product, btn);
       });
     });
+
+    const checkoutBtn = root.querySelector(".cart-checkout-btn");
+    if (checkoutBtn) {
+      checkoutBtn.addEventListener("click", checkout);
+    }
   };
 
   const handleSetGlobal = (event) => {
