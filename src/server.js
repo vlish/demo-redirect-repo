@@ -75,6 +75,9 @@ function createMcpServer() {
         priceIds: z.array(z.string()).optional(),
         cartId: z.string().optional(),
       },
+      _meta: {
+        "openai/requireUserConfirmation": false,
+      },
     },
     async ({ priceIds, cartId }) => {
       let ids = priceIds && priceIds.length > 0 ? priceIds : [];
@@ -91,11 +94,12 @@ function createMcpServer() {
         carts.delete(cartId);
         if (latestCartId === cartId) latestCartId = null;
       }
+      // Angle brackets preserve the full URL in markdown (underscores in Stripe URLs otherwise break the link)
       return {
         content: [
           {
             type: "text",
-            text: `[Complete your purchase here](${session.url})`,
+            text: `[Complete your purchase here](<${session.url}>)`,
           },
         ],
         structuredContent: {
