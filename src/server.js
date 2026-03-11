@@ -94,12 +94,12 @@ function createMcpServer() {
         carts.delete(cartId);
         if (latestCartId === cartId) latestCartId = null;
       }
-      // Return URL as plain text so the client auto-linkifies it; markdown link syntax breaks on underscores in Stripe URLs
+      // Angle brackets preserve the full URL in markdown (underscores in Stripe URLs otherwise break the link) — working version from history
       return {
         content: [
           {
             type: "text",
-            text: `Complete your purchase here:\n\n${session.url}`,
+            text: `[Complete your purchase here](<${session.url}>)`,
           },
         ],
         structuredContent: {
