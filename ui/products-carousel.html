@@ -468,21 +468,15 @@
     }
   }
 
-  let cartLoaded = false;
-  async function loadCurrentCartFromServer() {
-    if (cartLoaded) return;
-    if (!window.openai?.callTool) return;
-    cartLoaded = true;
-    try {
-      const result = await window.openai.callTool("get-current-cart", {});
-      const data = result?.structuredContent ?? result;
-      if (data && Array.isArray(data.items)) {
-        applyCartData(data);
-      }
-    } catch (_) {}
+  function tryReadCartFromMeta() {
+    const meta = window.openai?.toolResponseMetadata;
+    if (meta?.cart && Array.isArray(meta.cart.items)) {
+      applyCartData(meta.cart);
+    }
   }
 
   restoreFromWidgetState();
+  tryReadCartFromMeta();
 
   function generateCartId() {
     return Date.now().toString(36) + Math.random().toString(36).slice(2);
@@ -800,8 +794,6 @@
     if (output.products) {
       if (metaCart && Array.isArray(metaCart.items)) {
         applyCartData(metaCart);
-      } else {
-        loadCurrentCartFromServer();
       }
       renderCarousel(output.products);
     }
