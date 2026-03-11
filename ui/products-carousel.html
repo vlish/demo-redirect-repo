@@ -468,8 +468,11 @@
     }
   }
 
+  let cartLoaded = false;
   async function loadCurrentCartFromServer() {
+    if (cartLoaded) return;
     if (!window.openai?.callTool) return;
+    cartLoaded = true;
     try {
       const result = await window.openai.callTool("get-current-cart", {});
       const data = result?.structuredContent ?? result;
