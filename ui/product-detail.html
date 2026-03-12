@@ -135,7 +135,6 @@
     if (btn && !btn.disabled && window.openai?.callTool) {
       btn.addEventListener("click", () => {
         window.openai.callTool("add-to-cart", {
-          cartId: null,
           priceId: product.priceId ?? "",
           title: product.title ?? product.name ?? "",
           amount: product.amount ?? null,

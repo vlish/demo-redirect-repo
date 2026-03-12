@@ -18,8 +18,26 @@ const productsCarouselHTML = readFileSync("ui/products-carousel.html", "utf8");
 const productDetailUri = "ui://product-detail.html";
 const productDetailHTML = readFileSync("ui/product-detail.html", "utf8");
 
-/** Module-level cart storage so carts persist across MCP requests. Keyed by cartId (UUID); client passes cartId from first add-to-cart response for subsequent requests. */
-const carts = new Map();
+/** Cart per ChatGPT conversation session. Key: _meta["openai/session"]; value: { items, currency }. Cleared to empty after checkout. */
+const sessionCarts = new Map();
+
+function getOrCreateCart(sessionId) {
+  if (!sessionId) return null;
+  let cart = sessionCarts.get(sessionId);
+  if (!cart) {
+    cart = { items: [], currency: "usd" };
+    sessionCarts.set(sessionId, cart);
+  }
+  return cart;
+}
+
+function getCart(sessionId) {
+  return sessionId ? sessionCarts.get(sessionId) : null;
+}
+
+function clearCart(sessionId) {
+  if (sessionId) sessionCarts.set(sessionId, { items: [], currency: "usd" });
+}
 
 function createMcpServer() {
   const server = new McpServer({ name: "my-mcp-server", version: "1.0.0" });
@@ -68,19 +86,20 @@ function createMcpServer() {
     {
       title: "Buy products",
       description:
-        "Create a Stripe hosted checkout session. Pass cartId from the most recent add-to-cart or get-current-cart result to checkout the user's cart; or pass priceIds. Returns checkoutSessionUrl in structuredContent. Use when the user wants to checkout, pay, or buy items in cart.",
+        "Create a Stripe hosted checkout session for the user's cart (or pass priceIds). Use when the user wants to checkout, pay, or buy items in cart.",
       inputSchema: {
         priceIds: z.array(z.string()).optional(),
-        cartId: z.string().optional(),
       },
       _meta: {
         "openai/requireUserConfirmation": false,
       },
     },
-    async ({ priceIds, cartId }) => {
-      let ids = priceIds && priceIds.length > 0 ? priceIds : [];
-      if (ids.length === 0 && cartId && carts.has(cartId)) {
-        ids = carts.get(cartId).items.map((i) => i.priceId);
+    async (args, extra) => {
+      const sessionId = extra?._meta?.["openai/session"];
+      const cart = getCart(sessionId);
+      let ids = args.priceIds && args.priceIds.length > 0 ? args.priceIds : [];
+      if (ids.length === 0 && cart && cart.items.length > 0) {
+        ids = cart.items.map((i) => i.priceId);
       }
       if (ids.length === 0) {
         return {
@@ -88,9 +107,7 @@ function createMcpServer() {
         };
       }
       const session = await createCheckoutSession(ids);
-      if (cartId && carts.has(cartId)) {
-        carts.delete(cartId);
-      }
+      clearCart(sessionId);
       // Escape underscores so markdown doesn't treat them as emphasis and truncate the link
       const urlForLink = (session.url || "").replace(/_/g, "\\_");
       return {
@@ -112,28 +129,30 @@ function createMcpServer() {
     "add-to-cart",
     {
       title: "Add to cart",
-      description:
-        "Add a product to the shopping cart. Pass cartId from a previous add-to-cart response to add to the same cart; omit or pass null to create a new cart. Returns cartId — you MUST remember this cartId and pass it to discover-by-category whenever the user browses another category, and to get-current-cart or buy-products when relevant, so the user's cart is not lost across messages.",
+      description: "Add a product to the shopping cart. Cart is managed per conversation.",
       inputSchema: {
-        cartId: z.string().nullable(),
         priceId: z.string(),
         title: z.string(),
         amount: z.number().nullable(),
         currency: z.string().nullable(),
       },
     },
-    async ({ cartId, priceId, title, amount, currency }) => {
-      let id = cartId && carts.has(cartId) ? cartId : null;
-      if (!id) {
-        id = crypto.randomUUID();
-        carts.set(id, { items: [] });
+    async (args, extra) => {
+      const { priceId, title, amount, currency } = args;
+      const sessionId = extra?._meta?.["openai/session"];
+      const cart = getOrCreateCart(sessionId);
+      if (!cart) {
+        return {
+          content: [{ type: "text", text: "Unable to add to cart (no session)." }],
+          structuredContent: { cartId: null, items: [], itemCount: 0, subtotal: 0, currency: "usd" },
+        };
       }
-      const cart = carts.get(id);
       cart.items.push({ priceId, title, amount, currency });
-      const itemCount = cart.items.length;
-      const subtotal = cart.items.reduce((s, i) => s + (i.amount ?? 0), 0);
       const cartCurrency =
         currency || cart.items.find((i) => i.currency)?.currency || "usd";
+      cart.currency = cartCurrency;
+      const itemCount = cart.items.length;
+      const subtotal = cart.items.reduce((s, i) => s + (i.amount ?? 0), 0);
       return {
         content: [
           {
@@ -142,7 +161,7 @@ function createMcpServer() {
           },
         ],
         structuredContent: {
-          cartId: id,
+          cartId: sessionId,
           items: cart.items,
           itemCount,
           subtotal,
@@ -156,18 +175,17 @@ function createMcpServer() {
     "get-cart",
     {
       title: "Get cart",
-      description:
-        "Retrieve a shopping cart by cartId. Returns items, count, and subtotal.",
-      inputSchema: { cartId: z.string() },
+      description: "Retrieve the current conversation's shopping cart. Returns items, count, and subtotal.",
+      inputSchema: {},
     },
-    async ({ cartId }) => {
-      const cart = carts.get(cartId);
-      if (!cart) {
-        return {
-          content: [{ type: "text", text: "Cart not found or expired." }],
-          structuredContent: { cartId, items: [], itemCount: 0, subtotal: 0, currency: "usd" },
-        };
-      }
+    async (_args, extra) => {
+      const sessionId = extra?._meta?.["openai/session"];
+      const cart = getCart(sessionId);
+      const empty = {
+        content: [{ type: "text", text: "Cart not found or empty." }],
+        structuredContent: { cartId: sessionId ?? null, items: [], itemCount: 0, subtotal: 0, currency: "usd" },
+      };
+      if (!cart || cart.items.length === 0) return empty;
       const itemCount = cart.items.length;
       const subtotal = cart.items.reduce((s, i) => s + (i.amount ?? 0), 0);
       const currency = cart.items.find((i) => i.currency)?.currency || "usd";
@@ -175,7 +193,7 @@ function createMcpServer() {
         content: [
           { type: "text", text: `Cart has ${itemCount} item${itemCount !== 1 ? "s" : ""}.` },
         ],
-        structuredContent: { cartId, items: cart.items, itemCount, subtotal, currency },
+        structuredContent: { cartId: sessionId, items: cart.items, itemCount, subtotal, currency },
       };
     }
   );
@@ -184,17 +202,17 @@ function createMcpServer() {
     "get-current-cart",
     {
       title: "Get current cart",
-      description:
-        "Retrieve a shopping cart by cartId. Pass the cartId from the most recent add-to-cart result in this conversation. Use this cartId when calling discover-by-category so the user's cart is shown in the carousel.",
-      inputSchema: { cartId: z.string().optional() },
+      description: "Retrieve the current conversation's shopping cart.",
+      inputSchema: {},
     },
-    async ({ cartId }) => {
+    async (_args, extra) => {
+      const sessionId = extra?._meta?.["openai/session"];
+      const cart = getCart(sessionId);
       const empty = {
         content: [{ type: "text", text: "No cart yet." }],
-        structuredContent: { cartId: null, items: [], itemCount: 0, subtotal: 0, currency: "usd" },
+        structuredContent: { cartId: sessionId ?? null, items: [], itemCount: 0, subtotal: 0, currency: "usd" },
       };
-      if (!cartId || !carts.has(cartId)) return empty;
-      const cart = carts.get(cartId);
+      if (!cart || cart.items.length === 0) return empty;
       const itemCount = cart.items.length;
       const subtotal = cart.items.reduce((s, i) => s + (i.amount ?? 0), 0);
       const currency = cart.items.find((i) => i.currency)?.currency || "usd";
@@ -203,7 +221,7 @@ function createMcpServer() {
           { type: "text", text: `Cart has ${itemCount} item${itemCount !== 1 ? "s" : ""}.` },
         ],
         structuredContent: {
-          cartId,
+          cartId: sessionId,
           items: cart.items,
           itemCount,
           subtotal,
@@ -251,12 +269,13 @@ function createMcpServer() {
     "discover-by-category",
     {
       title: "Discover products by category",
-      description:
-        "Returns products in the given category. IMPORTANT: If the user has added items to cart earlier in this conversation, you MUST pass the cartId from the most recent add-to-cart or get-current-cart result. Without cartId the carousel will show an empty cart when the user switches category or sends a new message. Always pass cartId when the user had a cart.",
-      inputSchema: { category: z.string(), cartId: z.string().optional() },
+      description: "Returns products in the given category. Cart for this conversation is included automatically.",
+      inputSchema: { category: z.string() },
       _meta: { "openai/outputTemplate": productsCarouselUri },
     },
-    async ({ category, cartId: requestCartId }) => {
+    async (args, extra) => {
+      const sessionId = extra?._meta?.["openai/session"];
+      const { category } = args;
       const normalizedCategory = String(category).trim();
       const products = await listAllActiveProducts(["data.default_price"]);
       const inCategory = products
@@ -290,22 +309,22 @@ function createMcpServer() {
             currency: price?.currency ?? null,
           };
         });
+      const cart = getCart(sessionId);
       const cartPayload =
-        requestCartId && carts.has(requestCartId)
+        cart && cart.items.length > 0
           ? (() => {
-              const c = carts.get(requestCartId);
-              const itemCount = c.items.length;
-              const subtotal = c.items.reduce((s, i) => s + (i.amount ?? 0), 0);
-              const currency = c.items.find((i) => i.currency)?.currency || "usd";
+              const itemCount = cart.items.length;
+              const subtotal = cart.items.reduce((s, i) => s + (i.amount ?? 0), 0);
+              const currency = cart.items.find((i) => i.currency)?.currency || "usd";
               return {
-                cartId: requestCartId,
-                items: c.items,
+                cartId: sessionId,
+                items: cart.items,
                 itemCount,
                 subtotal,
                 currency,
               };
             })()
-          : { cartId: null, items: [], itemCount: 0, subtotal: 0, currency: "usd" };
+          : { cartId: sessionId ?? null, items: [], itemCount: 0, subtotal: 0, currency: "usd" };
       return {
         content: [],
         structuredContent: { products: inCategory },

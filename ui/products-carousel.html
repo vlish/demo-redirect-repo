@@ -471,53 +471,18 @@
   // ── Cart state (persisted via widgetState, hydrated from server) ──
   const cart = { id: null, items: [], currency: "usd" };
 
-  function updateModelContextWithCart() {
-    if (!cart.id || !window.parent?.postMessage) return;
-    try {
-      window.parent.postMessage(
-        {
-          jsonrpc: "2.0",
-          method: "ui/update-model-context",
-          params: {
-            content: [
-              {
-                type: "text",
-                text: `User's current cartId: ${cart.id}. Pass this cartId when calling discover-by-category, get-current-cart, or buy-products.`,
-              },
-            ],
-            structuredContent: { cartId: cart.id },
-          },
-          id: "cart-context-" + Date.now(),
-        },
-        "*"
-      );
-    } catch (e) {}
-  }
-
   function persistWidgetState() {
     if (!window.openai?.setWidgetState) return;
-    const cartId = cart.id;
-    const cartCurrency = cart.currency || "usd";
-    if (cartId) {
-      window.openai.setWidgetState({
-        cartId,
-        cartCurrency,
-        modelContent: `User's current cartId: ${cartId}. Always pass this cartId when calling discover-by-category, get-current-cart, or buy-products so the cart is preserved.`,
-        privateContent: { cartId, cartCurrency },
-      });
-      updateModelContextWithCart();
-    } else {
-      window.openai.setWidgetState({ cartId: null, cartCurrency });
-    }
+    window.openai.setWidgetState({
+      cartId: cart.id,
+      cartCurrency: cart.currency || "usd",
+    });
   }
 
   function restoreFromWidgetState() {
     const ws = window.openai?.widgetState;
-    if (ws?.cartId) {
-      cart.id = ws.cartId;
-      cart.currency = ws.cartCurrency || ws.privateContent?.cartCurrency || "usd";
-    }
-    if (ws?.privateContent?.cartId) cart.id = cart.id || ws.privateContent.cartId;
+    if (ws?.cartId) cart.id = ws.cartId;
+    if (ws?.cartCurrency) cart.currency = ws.cartCurrency;
   }
 
   function tryReadCartFromMeta() {
@@ -529,11 +494,6 @@
 
   restoreFromWidgetState();
   tryReadCartFromMeta();
-  if (cart.id) updateModelContextWithCart();
-
-  function generateCartId() {
-    return Date.now().toString(36) + Math.random().toString(36).slice(2);
-  }
 
   const CART_SVG = '<svg viewBox="0 0 24 24"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>';
   const ADD_TO_CART_HTML = `<span class="cta-icon">${CART_SVG}</span> Add to cart`;
@@ -561,7 +521,6 @@
   }
 
   function addToCart(product, triggerBtn) {
-    if (!cart.id) cart.id = generateCartId();
     cart.items.push({
       priceId: product.priceId,
       title: product.title ?? product.name ?? "",
@@ -585,7 +544,6 @@
 
     if (window.openai?.callTool) {
       window.openai.callTool("add-to-cart", {
-        cartId: cart.id,
         priceId: product.priceId ?? "",
         title: product.title ?? product.name ?? "",
         amount: product.amount ?? null,
@@ -597,12 +555,8 @@
   async function checkout() {
     if (cart.items.length === 0) return;
     if (!window.openai?.callTool) return;
-    const priceIds = cart.items.map((i) => i.priceId).filter(Boolean);
     try {
-      const result = await window.openai.callTool("buy-products", {
-        priceIds,
-        cartId: cart.id,
-      });
+      const result = await window.openai.callTool("buy-products", {});
       const url =
         result?.structuredContent?.checkoutSessionUrl ??
         result?.checkoutSessionUrl;
