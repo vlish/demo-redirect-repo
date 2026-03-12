@@ -492,14 +492,8 @@
     }
   }
 
-  function loadCartFromServerIfNeeded() {
-    if (!cart.id || cart.items.length > 0 || !window.openai?.callTool) return;
-    window.openai.callTool("get-current-cart", { cartId: cart.id });
-  }
-
   restoreFromWidgetState();
   tryReadCartFromMeta();
-  loadCartFromServerIfNeeded();
 
   function generateCartId() {
     return Date.now().toString(36) + Math.random().toString(36).slice(2);
@@ -837,7 +831,6 @@
         applyCartData(metaCart, false);
       }
       renderCarousel(output.products);
-      loadCartFromServerIfNeeded();
     }
   };
 
@@ -859,7 +852,6 @@
         applyCartData(metaCart, false);
       }
       renderCarousel(sc.products);
-      loadCartFromServerIfNeeded();
     } else if (sc && Array.isArray(sc.items)) {
       applyCartData(sc, false);
     }

@@ -68,7 +68,7 @@ function createMcpServer() {
     {
       title: "Buy products",
       description:
-        "Create a Stripe hosted checkout session for the given products. Accepts either priceIds (array) or cartId. Returns checkoutSessionUrl in structuredContent — open this URL to redirect the user to Stripe checkout. Use when the user wants to checkout, pay, or buy items in cart.",
+        "Create a Stripe hosted checkout session. Pass cartId from the most recent add-to-cart or get-current-cart result to checkout the user's cart; or pass priceIds. Returns checkoutSessionUrl in structuredContent. Use when the user wants to checkout, pay, or buy items in cart.",
       inputSchema: {
         priceIds: z.array(z.string()).optional(),
         cartId: z.string().optional(),
@@ -113,7 +113,7 @@ function createMcpServer() {
     {
       title: "Add to cart",
       description:
-        "Add a product to the shopping cart. Pass cartId from a previous add-to-cart response to add to the same cart; omit or pass null to create a new cart. Returns cartId and updated cart — client should reuse cartId for later add-to-cart, get-current-cart, discover-by-category, and buy-products.",
+        "Add a product to the shopping cart. Pass cartId from a previous add-to-cart response to add to the same cart; omit or pass null to create a new cart. Returns cartId — you MUST remember this cartId and pass it to discover-by-category whenever the user browses another category, and to get-current-cart or buy-products when relevant, so the user's cart is not lost across messages.",
       inputSchema: {
         cartId: z.string().nullable(),
         priceId: z.string(),
@@ -185,7 +185,7 @@ function createMcpServer() {
     {
       title: "Get current cart",
       description:
-        "Retrieve a shopping cart by cartId. Pass the cartId returned from add-to-cart so the user's cart can be displayed or used for checkout.",
+        "Retrieve a shopping cart by cartId. Pass the cartId from the most recent add-to-cart result in this conversation. Use this cartId when calling discover-by-category so the user's cart is shown in the carousel.",
       inputSchema: { cartId: z.string().optional() },
     },
     async ({ cartId }) => {
@@ -252,7 +252,7 @@ function createMcpServer() {
     {
       title: "Discover products by category",
       description:
-        "Returns products in the given category. Pass cartId (from add-to-cart or get-current-cart) when the user has an existing cart so the cart summary is shown in the carousel.",
+        "Returns products in the given category. IMPORTANT: If the user has added items to cart earlier in this conversation, you MUST pass the cartId from the most recent add-to-cart or get-current-cart result. Without cartId the carousel will show an empty cart when the user switches category or sends a new message. Always pass cartId when the user had a cart.",
       inputSchema: { category: z.string(), cartId: z.string().optional() },
       _meta: { "openai/outputTemplate": productsCarouselUri },
     },
