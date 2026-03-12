@@ -48,12 +48,16 @@ function clearCart(sessionId) {
 function createMcpServer() {
   const server = new McpServer({ name: "my-mcp-server", version: "1.0.0" });
 
-  async function createCheckoutSession(priceIds) {
+  async function createCheckoutSession(priceIds, openaiSessionId) {
     const lineItems = priceIds.map((price) => ({ price, quantity: 1 }));
+    const baseUrl = "https://chat.openai.com/";
+    const success_url = openaiSessionId
+      ? `${baseUrl}?session=${encodeURIComponent(openaiSessionId)}`
+      : baseUrl;
     const session = await stripe.checkout.sessions.create({
       mode: "payment",
       line_items: lineItems,
-      success_url: "https://chat.openai.com/",
+      success_url,
     });
     return session;
   }
@@ -196,7 +200,7 @@ function createMcpServer() {
       }
 
       // redirect (default)
-      const session = await createCheckoutSession(ids);
+      const session = await createCheckoutSession(ids, sessionId);
       clearCart(sessionId);
       const url = session.url || "";
       return {
