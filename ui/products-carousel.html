@@ -471,9 +471,43 @@
   // ── Cart state (persisted via widgetState, hydrated from server) ──
   const cart = { id: null, items: [], currency: "usd" };
 
+  function updateModelContextWithCart() {
+    if (!cart.id || !window.parent?.postMessage) return;
+    try {
+      window.parent.postMessage(
+        {
+          jsonrpc: "2.0",
+          method: "ui/update-model-context",
+          params: {
+            content: [
+              {
+                type: "text",
+                text: `User's current cartId: ${cart.id}. Pass this cartId when calling discover-by-category, get-current-cart, or buy-products.`,
+              },
+            ],
+            structuredContent: { cartId: cart.id },
+          },
+          id: "cart-context-" + Date.now(),
+        },
+        "*"
+      );
+    } catch (e) {}
+  }
+
   function persistWidgetState() {
-    if (window.openai?.setWidgetState) {
-      window.openai.setWidgetState({ cartId: cart.id, cartCurrency: cart.currency });
+    if (!window.openai?.setWidgetState) return;
+    const cartId = cart.id;
+    const cartCurrency = cart.currency || "usd";
+    if (cartId) {
+      window.openai.setWidgetState({
+        cartId,
+        cartCurrency,
+        modelContent: `User's current cartId: ${cartId}. Always pass this cartId when calling discover-by-category, get-current-cart, or buy-products so the cart is preserved.`,
+        privateContent: { cartId, cartCurrency },
+      });
+      updateModelContextWithCart();
+    } else {
+      window.openai.setWidgetState({ cartId: null, cartCurrency });
     }
   }
 
@@ -481,8 +515,9 @@
     const ws = window.openai?.widgetState;
     if (ws?.cartId) {
       cart.id = ws.cartId;
-      cart.currency = ws.cartCurrency || "usd";
+      cart.currency = ws.cartCurrency || ws.privateContent?.cartCurrency || "usd";
     }
+    if (ws?.privateContent?.cartId) cart.id = cart.id || ws.privateContent.cartId;
   }
 
   function tryReadCartFromMeta() {
@@ -494,6 +529,7 @@
 
   restoreFromWidgetState();
   tryReadCartFromMeta();
+  if (cart.id) updateModelContextWithCart();
 
   function generateCartId() {
     return Date.now().toString(36) + Math.random().toString(36).slice(2);
