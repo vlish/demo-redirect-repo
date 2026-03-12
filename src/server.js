@@ -18,10 +18,8 @@ const productsCarouselHTML = readFileSync("ui/products-carousel.html", "utf8");
 const productDetailUri = "ui://product-detail.html";
 const productDetailHTML = readFileSync("ui/product-detail.html", "utf8");
 
-/** Module-level cart storage so carts persist across MCP requests. */
+/** Module-level cart storage so carts persist across MCP requests. Keyed by cartId (UUID); client passes cartId from first add-to-cart response for subsequent requests. */
 const carts = new Map();
-/** Latest cart id updated by add-to-cart; used so a new widget can load current cart without knowing cartId. */
-let latestCartId = null;
 
 function createMcpServer() {
   const server = new McpServer({ name: "my-mcp-server", version: "1.0.0" });
@@ -92,7 +90,6 @@ function createMcpServer() {
       const session = await createCheckoutSession(ids);
       if (cartId && carts.has(cartId)) {
         carts.delete(cartId);
-        if (latestCartId === cartId) latestCartId = null;
       }
       // Escape underscores so markdown doesn't treat them as emphasis and truncate the link
       const urlForLink = (session.url || "").replace(/_/g, "\\_");
@@ -116,7 +113,7 @@ function createMcpServer() {
     {
       title: "Add to cart",
       description:
-        "Add a product to the shopping cart. Creates a new cart if no cartId is provided. Returns the updated cart summary.",
+        "Add a product to the shopping cart. Pass cartId from a previous add-to-cart response to add to the same cart; omit or pass null to create a new cart. Returns cartId and updated cart — client should reuse cartId for later add-to-cart, get-current-cart, discover-by-category, and buy-products.",
       inputSchema: {
         cartId: z.string().nullable(),
         priceId: z.string(),
@@ -128,15 +125,11 @@ function createMcpServer() {
     async ({ cartId, priceId, title, amount, currency }) => {
       let id = cartId && carts.has(cartId) ? cartId : null;
       if (!id) {
-        id =
-          (latestCartId && carts.has(latestCartId) ? latestCartId : null) ||
-          cartId ||
-          crypto.randomUUID();
-        if (!carts.has(id)) carts.set(id, { items: [] });
+        id = crypto.randomUUID();
+        carts.set(id, { items: [] });
       }
       const cart = carts.get(id);
       cart.items.push({ priceId, title, amount, currency });
-      latestCartId = id;
       const itemCount = cart.items.length;
       const subtotal = cart.items.reduce((s, i) => s + (i.amount ?? 0), 0);
       const cartCurrency =
@@ -192,17 +185,16 @@ function createMcpServer() {
     {
       title: "Get current cart",
       description:
-        "Retrieve the current session's shopping cart (most recently updated). Use this when the carousel loads so the cart summary can be restored without a cartId.",
-      inputSchema: {},
+        "Retrieve a shopping cart by cartId. Pass the cartId returned from add-to-cart so the user's cart can be displayed or used for checkout.",
+      inputSchema: { cartId: z.string().optional() },
     },
-    async () => {
-      if (!latestCartId || !carts.has(latestCartId)) {
-        return {
-          content: [{ type: "text", text: "No cart yet." }],
-          structuredContent: { cartId: null, items: [], itemCount: 0, subtotal: 0, currency: "usd" },
-        };
-      }
-      const cart = carts.get(latestCartId);
+    async ({ cartId }) => {
+      const empty = {
+        content: [{ type: "text", text: "No cart yet." }],
+        structuredContent: { cartId: null, items: [], itemCount: 0, subtotal: 0, currency: "usd" },
+      };
+      if (!cartId || !carts.has(cartId)) return empty;
+      const cart = carts.get(cartId);
       const itemCount = cart.items.length;
       const subtotal = cart.items.reduce((s, i) => s + (i.amount ?? 0), 0);
       const currency = cart.items.find((i) => i.currency)?.currency || "usd";
@@ -211,7 +203,7 @@ function createMcpServer() {
           { type: "text", text: `Cart has ${itemCount} item${itemCount !== 1 ? "s" : ""}.` },
         ],
         structuredContent: {
-          cartId: latestCartId,
+          cartId,
           items: cart.items,
           itemCount,
           subtotal,
@@ -260,11 +252,11 @@ function createMcpServer() {
     {
       title: "Discover products by category",
       description:
-        "Returns products in the given category. Call this when the user wants to browse or discover products in a specific category (e.g. after listing categories).",
-      inputSchema: { category: z.string() },
+        "Returns products in the given category. Pass cartId (from add-to-cart or get-current-cart) when the user has an existing cart so the cart summary is shown in the carousel.",
+      inputSchema: { category: z.string(), cartId: z.string().optional() },
       _meta: { "openai/outputTemplate": productsCarouselUri },
     },
-    async ({ category }) => {
+    async ({ category, cartId: requestCartId }) => {
       const normalizedCategory = String(category).trim();
       const products = await listAllActiveProducts(["data.default_price"]);
       const inCategory = products
@@ -299,14 +291,14 @@ function createMcpServer() {
           };
         });
       const cartPayload =
-        latestCartId && carts.has(latestCartId)
+        requestCartId && carts.has(requestCartId)
           ? (() => {
-              const c = carts.get(latestCartId);
+              const c = carts.get(requestCartId);
               const itemCount = c.items.length;
               const subtotal = c.items.reduce((s, i) => s + (i.amount ?? 0), 0);
               const currency = c.items.find((i) => i.currency)?.currency || "usd";
               return {
-                cartId: latestCartId,
+                cartId: requestCartId,
                 items: c.items,
                 itemCount,
                 subtotal,
