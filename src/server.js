@@ -16,6 +16,9 @@ const stripe = new Stripe(stripeSecretKey);
 
 /** "redirect" = Stripe hosted checkout URL; "instant" = OpenAI instant checkout modal. Default: redirect. */
 const CHECKOUT_TYPE = (process.env.CHECKOUT_TYPE || "redirect").toLowerCase();
+
+/** Stripe network/merchant ID for instant checkout (payment_provider.merchant_id). */
+const MERCHANT_ID = process.env.MERCHANT_ID || "";
 const productsCarouselUri = "ui://products-carousel.html";
 const productsCarouselHTML = readFileSync("ui/products-carousel.html", "utf8");
 const productDetailUri = "ui://product-detail.html";
@@ -154,7 +157,7 @@ function createMcpServer() {
           payment_mode: "test",
           payment_provider: {
             provider: "stripe",
-            merchant_id: "",
+            merchant_id: MERCHANT_ID,
             supported_payment_methods: ["card"],
           },
           status: "ready_for_payment",
