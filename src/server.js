@@ -427,6 +427,32 @@ function createMcpServer() {
     }
   );
 
+  /** Debug tool: widget sends window.location / referrer; we echo it back into the chat to verify what the app can see. */
+  server.registerTool(
+    "debug-window-url",
+    {
+      title: "Debug window URL",
+      description:
+        "Echo back the current URL and referrer sent from the widget. Used to verify what window.location the ChatGPT app widget has access to.",
+      inputSchema: {
+        currentUrl: z.string().optional(),
+        referrer: z.string().optional(),
+      },
+    },
+    async (args) => {
+      const currentUrl = args.currentUrl ?? "(not provided)";
+      const referrer = args.referrer ?? "(not provided)";
+      const text =
+        "**Debug — URL from widget:**\n\n" +
+        `- \`window.location.href\` (currentUrl): ${currentUrl}\n` +
+        `- \`document.referrer\`: ${referrer}\n\n` +
+        "*(Widget runs in an iframe; these are the iframe's location and referrer, not necessarily the ChatGPT page URL.)*";
+      return {
+        content: [{ type: "text", text }],
+      };
+    }
+  );
+
   const billingAddressSchema = z.object({
     name: z.string(),
     line_one: z.string(),

@@ -431,6 +431,20 @@
     color: #999;
     cursor: not-allowed;
   }
+  .debug-url-btn {
+    margin-left: 0.5rem;
+    padding: 0.25rem 0.5rem;
+    font-size: 0.75rem;
+    color: #666;
+    background: transparent;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    cursor: pointer;
+  }
+  .debug-url-btn:hover {
+    background: #f0f0f0;
+    color: #333;
+  }
 
   /* "Added" state for Add to cart buttons */
   .carousel-card-cta.added {
@@ -741,6 +755,7 @@
           <span class="cart-total">${cartPriceStr}</span>
         </div>
         <button type="button" class="cart-checkout-btn" ${cartCount === 0 ? "disabled" : ""}>Checkout &rarr;</button>
+        <button type="button" class="debug-url-btn" title="Echo window.location to chat">Debug URL</button>
       </div>
     `;
 
@@ -809,6 +824,15 @@
     const checkoutBtn = root.querySelector(".cart-checkout-btn");
     if (checkoutBtn) {
       checkoutBtn.addEventListener("click", checkout);
+    }
+    const debugUrlBtn = root.querySelector(".debug-url-btn");
+    if (debugUrlBtn && typeof window.openai?.callTool === "function") {
+      debugUrlBtn.addEventListener("click", () => {
+        window.openai.callTool("debug-window-url", {
+          currentUrl: window.location.href,
+          referrer: document.referrer || "",
+        });
+      });
     }
   };
 
