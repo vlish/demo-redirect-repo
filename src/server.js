@@ -108,18 +108,18 @@ function createMcpServer() {
       }
       const session = await createCheckoutSession(ids);
       clearCart(sessionId);
-      // Escape underscores so markdown doesn't treat them as emphasis and truncate the link
-      const urlForLink = (session.url || "").replace(/_/g, "\\_");
+      const url = session.url || "";
+      // Plain text URL so markdown cannot break it (underscores, etc.). User can click if client linkifies or copy-paste.
       return {
         content: [
           {
             type: "text",
-            text: `[Complete your purchase here](${urlForLink})`,
+            text: `Complete your purchase here:\n\n${url}`,
           },
         ],
         structuredContent: {
           checkoutSessionId: session.id,
-          checkoutSessionUrl: session.url,
+          checkoutSessionUrl: url,
         },
       };
     }
