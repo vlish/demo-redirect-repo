@@ -557,14 +557,17 @@
     if (!window.openai?.callTool) return;
     try {
       const result = await window.openai.callTool("buy-products", {});
-      const url =
-        result?.structuredContent?.checkoutSessionUrl ??
-        result?.checkoutSessionUrl;
-      if (url && typeof url === "string") {
-        if (window.openai?.openExternal) {
-          window.openai.openExternal({ href: url });
-        } else {
-          window.open(url, "_top");
+      const sc = result?.structuredContent;
+      if (sc?.checkoutMode === "instant" && sc?.requestCheckoutPayload && window.openai?.requestCheckout) {
+        window.openai.requestCheckout(sc.requestCheckoutPayload);
+      } else {
+        const url = sc?.checkoutSessionUrl ?? result?.checkoutSessionUrl;
+        if (url && typeof url === "string") {
+          if (window.openai?.openExternal) {
+            window.openai.openExternal({ href: url });
+          } else {
+            window.open(url, "_top");
+          }
         }
       }
     } finally {

@@ -13,6 +13,9 @@ if (!stripeSecretKey) {
   throw new Error("STRIPE_SECRET_KEY environment variable is required");
 }
 const stripe = new Stripe(stripeSecretKey);
+
+/** "redirect" = Stripe hosted checkout URL; "instant" = OpenAI instant checkout modal. Default: redirect. */
+const CHECKOUT_TYPE = (process.env.CHECKOUT_TYPE || "redirect").toLowerCase();
 const productsCarouselUri = "ui://products-carousel.html";
 const productsCarouselHTML = readFileSync("ui/products-carousel.html", "utf8");
 const productDetailUri = "ui://product-detail.html";
@@ -62,6 +65,34 @@ function createMcpServer() {
     return { priceIds, uuid: uuid || "" };
   }
 
+  /** Build a checkout session id for instant checkout (used by complete_checkout). */
+  function createCheckoutSessionId() {
+    return (
+      "session_" +
+      Date.now() +
+      "_" +
+      Math.random().toString(36).slice(2)
+    );
+  }
+
+  /**
+   * Build line items for instant checkout from cart only (no Stripe API calls).
+   * Returns array of { priceId, title, amount, currency } or null if cart doesn't match.
+   */
+  function getLineItemsFromCart(priceIds, cart) {
+    if (!cart?.items?.length || priceIds.length === 0) return null;
+    if (!priceIds.every((id) => cart.items.some((i) => i.priceId === id))) return null;
+    return priceIds.map((id) => {
+      const item = cart.items.find((i) => i.priceId === id);
+      return {
+        priceId: id,
+        title: item.title ?? id,
+        amount: item.amount ?? 0,
+        currency: item.currency ?? "usd",
+      };
+    });
+  }
+
   const getTax = () => 0;
 
   /** Fetch all active products (Stripe list is paginated, default 10 per page). */
@@ -106,10 +137,65 @@ function createMcpServer() {
           content: [{ type: "text", text: "Cart is empty — nothing to check out." }],
         };
       }
+
+      if (CHECKOUT_TYPE === "instant") {
+        const selectedProducts = getLineItemsFromCart(ids, cart);
+        if (!selectedProducts?.length) {
+          return {
+            content: [{ type: "text", text: "Cart is empty — nothing to check out." }],
+          };
+        }
+        const totalAmount = selectedProducts.reduce((sum, p) => sum + (p.amount || 0), 0);
+        const tax = 0;
+        const checkoutSessionId = `${ids.join(",")}::${createCheckoutSessionId()}`;
+        const currency = (selectedProducts[0]?.currency || "usd").toUpperCase();
+        const requestCheckoutPayload = {
+          id: checkoutSessionId,
+          payment_mode: "test",
+          payment_provider: {
+            provider: "stripe",
+            merchant_id: "",
+            supported_payment_methods: ["card"],
+          },
+          status: "ready_for_payment",
+          currency,
+          line_items: selectedProducts.map((product) => ({
+            id: product.priceId,
+            item: { id: product.priceId, quantity: 1 },
+            base_amount: product.amount,
+            subtotal: product.amount,
+            tax: 0,
+            total: (product.amount || 0) + 0,
+          })),
+          totals: [
+            ...selectedProducts.map((p) => ({
+              type: "items_base_amount",
+              display_text: p.title || p.priceId,
+              amount: p.amount,
+            })),
+            { type: "subtotal", display_text: "Subtotal", amount: totalAmount },
+            { type: "tax", display_text: "Tax", amount: tax },
+            { type: "total", display_text: "Total", amount: totalAmount + tax },
+          ],
+          fulfillment_options: [],
+          fulfillment_address: null,
+          messages: [],
+          links: [{ type: "terms_of_service", url: "https://example.com/terms" }],
+        };
+        clearCart(sessionId);
+        return {
+          content: [{ type: "text", text: "Opening checkout…" }],
+          structuredContent: {
+            checkoutMode: "instant",
+            requestCheckoutPayload,
+          },
+        };
+      }
+
+      // redirect (default)
       const session = await createCheckoutSession(ids);
       clearCart(sessionId);
       const url = session.url || "";
-      // Plain text URL so markdown cannot break it (underscores, etc.). User can click if client linkifies or copy-paste.
       return {
         content: [
           {
@@ -118,6 +204,7 @@ function createMcpServer() {
           },
         ],
         structuredContent: {
+          checkoutMode: "redirect",
           checkoutSessionId: session.id,
           checkoutSessionUrl: url,
         },
