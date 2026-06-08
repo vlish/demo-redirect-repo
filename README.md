@@ -1,3 +1,4 @@
 # chatgpt-stripe-checkout-poc
 
-dummy change 
+dummy change for testing purposes
+
